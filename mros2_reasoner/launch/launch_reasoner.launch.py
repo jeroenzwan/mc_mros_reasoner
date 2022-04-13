@@ -33,13 +33,14 @@ def generate_launch_description():
     # Create the launch configuration variables
     working_ontology_file = LaunchConfiguration('model_file')
 
-    tomasys_files_array = [os.path.join(tomasys_ontology_bringup_dir, 'owl', 'tomasys.owl'),
-                        os.path.join(mros_ontology_bringup_dir, 'owl', 'mros.owl'),
-                        os.path.join(mros_ontology_bringup_dir, 'owl', 'navigation_domain.owl')]
+    tomasys_files_array = [os.path.join(tomasys_ontology_bringup_dir, 'owl', 'tomasys.owl')]
+                        # os.path.join(mros_ontology_bringup_dir, 'owl', 'mros.owl'),
+                        # os.path.join(mros_ontology_bringup_dir, 'owl', 'navigation_domain.owl')
+                       
 
     declare_working_ontology_cmd = DeclareLaunchArgument(
         'model_file',
-        default_value=os.path.join(mros_ontology_bringup_dir, 'owl', 'urjc_pilot.owl'),
+        default_value=os.path.join(mros_ontology_bringup_dir, 'owl', 'navigation_pilot.owl'),
         description='File name for the Working ontology file')
 
     declare_desired_configuration_cmd = DeclareLaunchArgument(

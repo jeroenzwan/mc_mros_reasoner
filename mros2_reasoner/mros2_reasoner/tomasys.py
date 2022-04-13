@@ -108,14 +108,14 @@ def updateQAvalue(fg, qa_type, value, tbox, abox):
 
 # Evaluates the Objective individuals in the KB and returns a list with those in error
 def evaluateObjectives(objectives):
-    objectives_internal_error = []
+    objectives_error = []
     for o in objectives:
         if o.o_status in ["UNGROUNDED",
                          "UPDATABLE",
-                         "IN_ERROR_NFR",
-                         "IN_ERROR_COMPONENT"]:
-            objectives_internal_error.append(o)
-    return objectives_internal_error
+                         "INTERNAL_ERROR",
+                         "EXTERNAL_ERROR"]:
+            objectives_error.append(o)
+    return objectives_error
 
 
 # Select best FD in the KB, given:

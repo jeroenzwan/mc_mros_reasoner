@@ -357,19 +357,19 @@ class RosReasoner(Node):
 
 
         # EVALUATE functional hierarchy (objectives statuses) (MAPE - Analysis)
-        objectives_internal_error = evaluateObjectives(self.reasoner.search_objectives())
-        if not objectives_internal_error:
+        objectives_error = evaluateObjectives(self.reasoner.search_objectives())
+        if not objectives_error:
             self.get_logger().info("  >> No Objectives in ERROR: no adaptation is needed")
             # self.get_logger().info('  >> Finished MAPE-K ** ANALYSIS **')
             # self.get_logger().info('Exited timer_cb for metacontrol reasoning')
             return
-        elif len(objectives_internal_error) > 1 :
+        elif len(objectives_error) > 1 :
             self.get_logger().error("- More than 1 objective in error, case not supported yet.")
             self.get_logger().info('  >> Finished MAPE-K ** ANALYSIS **')
             self.get_logger().info('Exited timer_cb for metacontrol reasoning')
             return
         else:
-            for obj_in_error in objectives_internal_error:
+            for obj_in_error in objectives_error:
                 self.get_logger().warning("Objective {0} in status: {1}".format(obj_in_error.name, obj_in_error.o_status))
             #self.get_logger().info('  >> Finished MAPE-K ** ANALYSIS **')
 
