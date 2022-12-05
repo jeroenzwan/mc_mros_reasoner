@@ -24,6 +24,7 @@ class MockNode(Node):
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
         self.mockiness_level = 1
+        self.component_available = 'TRUE'
 
     def start(self):
         self.get_logger().info('Waiting for server')
@@ -80,10 +81,25 @@ class MockNode(Node):
         status_msg.message = "QA status"
         diag_msg.status.append(status_msg)
 
+        status_msg = DiagnosticStatus()
+        status_msg.level = DiagnosticStatus.OK
+        status_msg.name = ""
+        key_value = KeyValue()
+        key_value.key = "c_mock_component_state_3"
+        key_value.value = str(self.component_available)
+        status_msg.values.append(key_value)
+        status_msg.message = "Component status"
+        diag_msg.status.append(status_msg)
+
         self.diagnostics_publisher.publish(diag_msg)
 
         self.mockiness_level -= 0.05
-
+        if self.component_available == 'TRUE':
+            self.component_available = 'FALSE'
+        elif self.component_available == 'RECOVERED':
+            self.component_available = 'TRUE'
+        else:
+            self.component_available = 'RECOVERED'
 
 if __name__ == '__main__':
     print("Starting detect pipeline node")
