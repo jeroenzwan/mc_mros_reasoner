@@ -3,10 +3,11 @@ import rclpy
 from rclpy.action import ActionServer
 from rclpy.action import CancelResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.node import Node
+from rclpy.node import Node as ROS2Node
 from rclpy.parameter import Parameter
 
 from system_modes_msgs.srv import ChangeMode
+from std_msgs.msg import Empty
 from diagnostic_msgs.msg import DiagnosticArray
 from diagnostic_msgs.msg import KeyValue
 
@@ -16,11 +17,13 @@ from mros2_msgs.action import ControlQos
 from mros2_msgs.msg import QoS
 from mros2_msgs.srv import MetacontrolFD
 
+from plansys2_msgs.msg import Param, Node, Tree
+from plansys2_msgs.srv import AffectParam, AffectNode, AddProblemGoal, GetStates
 
-class RosReasoner(Node, Reasoner):
+class RosReasoner(ROS2Node, Reasoner):
 
     def __init__(self):
-        Node.__init__(self, 'mros2_reasoner_node')
+        ROS2Node.__init__(self, 'mros2_reasoner_node')
 
         self.declare_parameter('model_file', Parameter.Type.STRING)
         self.declare_parameter('tomasys_file', Parameter.Type.STRING_ARRAY)
@@ -41,6 +44,28 @@ class RosReasoner(Node, Reasoner):
         #  Used mainly for testing
         self.use_reconfiguration_srv = self.get_parameter(
             'use_reconfigure_srv').value
+
+        self.iterator = 0
+
+        self.instance_cli = self.create_client(AffectParam,
+                '/problem_expert/add_problem_instance')
+        while not self.instance_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('instance service not available, waiting again...')
+
+        self.predicate_cli = self.create_client(AffectNode,
+                '/problem_expert/add_problem_predicate')
+        while not self.predicate_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('predicate service not available, waiting again...')
+
+        self.get_predicates_cli = self.create_client(GetStates,
+                '/problem_expert/get_problem_predicates')
+        while not self.get_predicates_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('get predicates service not available, waiting again...')
+
+        self.remove_predicate_cli = self.create_client(AffectNode,
+                '/problem_expert/remove_problem_predicate')
+        while not self.remove_predicate_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('remove predicate service not available, waiting again...')
 
         # Use execute_ros instead of Reasoner.execute
         if self.use_reconfiguration_srv:
@@ -100,6 +125,20 @@ class RosReasoner(Node, Reasoner):
         else:
             self.logger.info('grounded_configuration set to None')
             self.grounded_configuration = None
+
+    def set_initial_instances_pddl(self):
+
+        self.call_instance_service('bluerov', 'uuv')
+
+        self.call_instance_service('pl1', 'pipeline')
+
+        self.call_instance_service('fd_mock1', 'functiondesign')
+
+        self.call_instance_service('fd_mock2', 'functiondesign')
+
+        self.call_instance_service('fd_mock3', 'functiondesign')
+
+        self.call_instance_service('p1', 'path')
 
     def objective_cancel_goal_callback(self, cancel_request):
         self.logger.info('Cancel Action Callback!')
@@ -297,6 +336,93 @@ class RosReasoner(Node, Reasoner):
                 self.logger.error('= RECONFIGURATION FAILED =')
                 return
 
+    def call_instance_service(self, _name, _type):
+        self.logger.info('entered call_instance_service')
+        msg = Param()
+        msg.name = _name
+        msg.type = _type
+
+        req = AffectParam.Request()
+        req.param = msg
+
+        try:
+            instance_call_response = self.instance_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return instance_call_response
+
+    def call_predicate_service(self, _name, _params):
+        self.logger.info('entered call_predicate_service')
+        self.logger.info(str(_name))
+        self.logger.info(str(_params))
+        msg = Node()
+        msg.node_type = 5
+        msg.name = _name
+
+        param_list = []
+        for _param in _params:
+            param = Param()
+            param.name = _param[0]
+            param.type = _param[1]
+            param_list.append(param)
+
+        msg.parameters = param_list
+
+        req = AffectNode.Request()
+        req.node = msg
+
+        try:
+            predicate_call_response = self.predicate_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return predicate_call_response
+
+    def get_predicates_pddl(self):
+        req = GetStates.Request()
+        req.request = Empty()
+
+        try:
+            get_predicates_call_response = self.get_predicates_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return get_predicates_call_response
+
+    def remove_predicates_pddl(self):
+        predicates = self.get_predicates_pddl()
+        for predicate in predicates.states:
+            self.logger.info('predicate name is {}'.format(
+                                predicate.name))
+            self.logger.info('predicate params are {}'.format(
+                                predicate.parameters))
+            self.call_remove_predicate_service(predicate)
+
+    def call_remove_predicate_service(self, predicate):
+        self.logger.info('entered call_remove_predicate_service')
+        # self.logger.info(str(_name))
+        # self.logger.info(str(_params))
+        # msg = Node()
+        # msg.node_type = 5
+        # msg.name = _name
+
+        # msg.parameters = _params
+
+        req = AffectNode.Request()
+        req.node = predicate
+
+        try:
+            predicate_call_response = self.remove_predicate_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return predicate_call_response
+
     # main metacontrol loop
     def metacontrol_loop_callback(self):
 
@@ -309,10 +435,30 @@ class RosReasoner(Node, Reasoner):
         objectives_in_error = self.analyze()
 
         # Plan
-        desired_configurations = self.plan(objectives_in_error)
+        desired_configuration = self.plan(objectives_in_error)
+
+        self.set_initial_instances_pddl()
+
+        available_configurations, current_fd = \
+                self.plan_pddl(objectives_in_error)
+
+        if available_configurations is not None:
+            self.logger.info('available_configurations is not None')
+            self.logger.info('available_configurations is {}'.format(
+                                available_configurations))
+            self.remove_predicates_pddl()
+            
+            for available_configuration in available_configurations:
+                self.call_predicate_service('available_fd',
+                        [[available_configuration[0].name,'functiondesign']])
+
+        if current_fd is not None:
+            self.call_predicate_service('fd_selected',
+                    [current_fd.name, 'functiondesign'])
 
         # Execute
-        self.execute(desired_configurations)
+        self.execute(desired_configuration)
 
         self.logger.info(
             'Exited metacontrol_loop_callback')
+

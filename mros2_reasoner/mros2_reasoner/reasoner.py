@@ -12,6 +12,8 @@ from threading import Lock
 from mros2_reasoner.tomasys import get_objectives_in_error
 from mros2_reasoner.tomasys import ground_fd
 from mros2_reasoner.tomasys import obtain_best_function_design
+from mros2_reasoner.tomasys import obtain_function_design
+from mros2_reasoner.tomasys import get_current_function_design
 from mros2_reasoner.tomasys import print_ontology_status
 from mros2_reasoner.tomasys import read_ontology_file
 from mros2_reasoner.tomasys import remove_objective_grounding
@@ -229,6 +231,7 @@ class Reasoner:
         self.onto.save(file="error.owl", format="rdfxml")
         sys.exit(0)
 
+    # Currently does nothing, since ComponentState is removed
     def handle_updatable_objectives(self, obj_in_error):
         if obj_in_error.o_status == "UPDATABLE":
             self.logger.info(
@@ -263,6 +266,20 @@ class Reasoner:
             self.logger.warning(
                 "No FD found to solve Objective {} ".format(obj_in_error.name))
         return desired_configuration
+
+    def select_desired_configuration_pddl(self, obj_in_error):
+        self.logger.info(" >> Reasoner searches an FD ")
+        desired_configurations = obtain_function_design(
+            obj_in_error, self.tomasys)
+
+        self.logger.info(
+            "desired_configurations are {}".format(desired_configurations))
+
+        if desired_configurations is None:
+            self.logger.warning(
+                "No FD found to solve Objective {} ".format(obj_in_error.name))
+        return desired_configurations
+
 
     # MAPE-K: Analyze step
     def analyze(self):
@@ -307,6 +324,24 @@ class Reasoner:
                 desired_configurations[obj_in_error] = \
                     self.select_desired_configuration(obj_in_error)
         return desired_configurations
+
+    def plan_pddl(self, objectives_in_error):
+        self.logger.info('  >> Started MAPE-K ** PLAN adaptation PDDL  **')
+
+        available_configurations = None
+        for obj_in_error in objectives_in_error:
+            self.handle_updatable_objectives(obj_in_error)
+            self.logger.info('in objectives_in_error loop')
+
+            available_configurations = \
+                self.select_desired_configuration_pddl(obj_in_error)
+
+        current_fd = get_current_function_design(obj_in_error, self.tomasys)
+
+        if current_fd is not None:
+            self.logger.info(
+                "current_fd is {}".format(str(current_fd.name)))
+        return available_configurations, current_fd
 
     # MAPE-K: Execute step
     def execute(self, desired_configurations):

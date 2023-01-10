@@ -174,7 +174,53 @@ def get_current_function_design(o, tbox):
 # - o: individual of tomasys:Objective
 # - tomasys ontology that contains the tomasys tbox
 def obtain_best_function_design(o, tbox):
-    logging.warning("\t\t\t == Obatin Best Function Design ==")
+    logging.warning("\t\t\t == Obtain Best Function Design ==")
+    f = o.typeF
+    # get fds for Function F
+    fds = []
+    for fd in list(tbox.FunctionDesign.instances()):
+        if fd.solvesF == f:
+            fds.append(fd)
+    logging.warning("== FunctionDesigns AVAILABLE: %s",
+                    str([fd.name for fd in fds]))
+
+    # fiter fds to only those available
+    # FILTER if FD realisability is NOT FALSE (TODO check SWRL rules are
+    # complete for this)
+    realisable_fds = [fd for fd in fds if fd.fd_realisability is not False]
+    logging.warning("== FunctionDesigns REALISABLE: %s",
+                    str([fd.name for fd in realisable_fds]))
+    # discard FDs already grounded for this objective when objective in error
+    suitable_fds = [
+        fd for fd in fds if (
+            (o not in fd.fd_error_log) and (
+                fd.fd_realisability is not False))]
+    logging.warning("== FunctionDesigns NOT IN ERROR LOG: %s",
+                    str([fd.name for fd in suitable_fds]))
+    # discard those FD that will not meet objective NFRs
+
+    fds_for_obj = filter_fds(o, suitable_fds, tbox)
+    if fds_for_obj != []:
+        logging.warning(
+            "== FunctionDesigns also meeting NFRs: %s", [
+                fd.name for fd in fds_for_obj])
+        best_utility = 0
+        for fd in fds_for_obj:
+            # if fd != current_fd:
+            utility_fd = utility(fd)
+            logging.warning("== Utility for %s : %f", fd.name, utility_fd)
+            if utility_fd > best_utility:
+                best_fd = fd
+                best_utility = utility_fd
+
+        logging.warning("\t\t\t == Best FD available %s", str(best_fd.name))
+        return best_fd.name
+    else:
+        logging.warning("\t\t\t == *** NO SOLUTION FOUND ***")
+        return None
+
+def obtain_function_design(o, tbox):
+    logging.warning("\t\t\t == Obtain Function Designs ==")
     f = o.typeF
     # get fds for Function F
     fds = []
@@ -201,23 +247,18 @@ def obtain_best_function_design(o, tbox):
 
     fds_for_obj = filter_fds(o, suitable_fds, tbox)
     # get best FD based on higher Utility/trade-off of QAs
-    current_fd = get_current_function_design(o, tbox)
-    best_fd = current_fd
+    fd_with_qa = []
     if fds_for_obj != []:
         logging.warning(
             "== FunctionDesigns also meeting NFRs: %s", [
                 fd.name for fd in fds_for_obj])
         best_utility = 0
         for fd in fds_for_obj:
-            if fd != current_fd:
-                utility_fd = utility(fd)
-                logging.warning("== Utility for %s : %f", fd.name, utility_fd)
-                if utility_fd > best_utility:
-                    best_fd = fd
-                    best_utility = utility_fd
+            utility_fd = utility(fd)
+            logging.warning("== Utility for %s : %f", fd.name, utility_fd)
+            fd_with_qa.append([fd, utility_fd])
 
-        logging.warning("\t\t\t == Best FD available %s", str(best_fd.name))
-        return best_fd.name
+        return fd_with_qa
     else:
         logging.warning("\t\t\t == *** NO SOLUTION FOUND ***")
         return None
