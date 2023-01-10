@@ -246,18 +246,26 @@ def obtain_function_design(o, tbox):
     # discard those FD that will not meet objective NFRs
 
     fds_for_obj = filter_fds(o, suitable_fds, tbox)
+<<<<<<< HEAD
+    # get best FD based on higher Utility/trade-off of QAs
+    fd_with_qa = []
+=======
+>>>>>>> humble
     if fds_for_obj != []:
         best_utility = 0
         for fd in fds_for_obj:
+<<<<<<< HEAD
             utility_fd = utility(fd)
             logging.warning("== Utility for %s : %f", fd.name, utility_fd)
             fd_with_qa.append([fd, utility_fd])
+=======
             # if fd != current_fd:
             utility_fd = utility(fd)
             logging.warning("== Utility for %s : %f", fd.name, utility_fd)
             if utility_fd > best_utility:
                 best_fd = fd
                 best_utility = utility_fd
+>>>>>>> humble
 
         return fd_with_qa
     else:

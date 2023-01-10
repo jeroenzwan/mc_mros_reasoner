@@ -19,7 +19,7 @@ from mros2_reasoner.tomasys import read_ontology_file
 from mros2_reasoner.tomasys import remove_objective_grounding
 from mros2_reasoner.tomasys import reset_fd_realisability
 from mros2_reasoner.tomasys import reset_objective_status
-from mros2_reasoner.tomasys import updated_fg_measured_qa
+from mros2_reasoner.tomasys import update_fg_measured_qa
 from mros2_reasoner.tomasys import update_measured_qa_value
 
 from owlready2 import destroy_entity
@@ -29,7 +29,6 @@ import logging
 
 
 class Reasoner:
-    """docstring for Reasoner."""
 
     def __init__(self, tomasys_file, model_file):
 
@@ -38,10 +37,6 @@ class Reasoner:
         # application model as individuals of tomasys classes
         self.onto = read_ontology_file(model_file)
 
-        # name of the current system configuration, as stored in KB
-        self.grounded_configuration = None
-        # TODO move to RosReasoner or remove: there can be multiple
-        # configurations grounded (for multiple objectives)
         # This Lock is used to ensure safety of tQAvalues
         self.ontology_lock = Lock()
 
@@ -64,23 +59,30 @@ class Reasoner:
             return False
 
     def search_objectives(self):
-        # Root objectives
         objectives = self.onto.search(type=self.tomasys.Objective)
         return objectives
 
     def has_objective(self):
         objectives = self.search_objectives()
         has_objective = False
-        if objectives == []:
-            self.logger.info(
-                'No objectives found, waiting for new Objective')
-        else:
+        if objectives != []:
             has_objective = True
-            for objective in objectives:
-                self.logger.info(
-                    'Objective {} found'.format(
-                        objective.name))
         return has_objective
+
+    def get_objective_from_objective_id(self, objective_id):
+        objectives = self.search_objectives()
+        if objectives == []:
+            return None
+        for objective in objectives:
+            if str(objective.name) == str(objective_id):
+                return objective
+
+    def get_function_name_from_objective_id(self, objective_id):
+        objective = self.get_objective_from_objective_id(objective_id)
+        if objective is None:
+            return None
+        else:
+            return str(objective.typeF.name)
 
     def get_objectives_in_error(self):
         return get_objectives_in_error(self.search_objectives())
@@ -199,7 +201,7 @@ class Reasoner:
                 measured_qa = update_measured_qa_value(
                     qa_type, value, self.tomasys, self.onto)
                 for fg in fgs:
-                    updated_fg_measured_qa(fg, measured_qa)
+                    update_fg_measured_qa(fg, measured_qa)
             return_value = True
         else:
             return_value = False
@@ -287,7 +289,7 @@ class Reasoner:
         print_ontology_status(self.tomasys)
 
         objectives_in_error = []
-        if self.has_objective() is not True:
+        if self.has_objective() is False:
             return objectives_in_error
 
         self.logger.info(
@@ -314,6 +316,9 @@ class Reasoner:
 
     # MAPE-K: Plan step
     def plan(self, objectives_in_error):
+        if self.has_objective() is False or objectives_in_error == []:
+            return dict()
+
         self.logger.info('  >> Started MAPE-K ** PLAN adaptation **')
 
         desired_configurations = self.select_requested_configurations()
@@ -321,8 +326,10 @@ class Reasoner:
             self.handle_updatable_objectives(obj_in_error)
 
             if obj_in_error not in desired_configurations:
-                desired_configurations[obj_in_error] = \
-                    self.select_desired_configuration(obj_in_error)
+                desired_config = self.select_desired_configuration(
+                    obj_in_error)
+                if desired_config is not None:
+                    desired_configurations[obj_in_error] = desired_config
         return desired_configurations
 
     def plan_pddl(self, objectives_in_error):
@@ -345,6 +352,9 @@ class Reasoner:
 
     # MAPE-K: Execute step
     def execute(self, desired_configurations):
+        if self.has_objective() is False or desired_configurations == dict():
+            return
+
         self.logger.info('  >> Started MAPE-K ** EXECUTION **')
         for objective in desired_configurations:
             self.set_new_grounding(

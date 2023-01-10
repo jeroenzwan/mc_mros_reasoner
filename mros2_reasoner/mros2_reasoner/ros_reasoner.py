@@ -36,8 +36,7 @@ class RosReasoner(ROS2Node, Reasoner):
         )
 
         self.declare_parameter('desired_configuration', Parameter.Type.STRING)
-        self.declare_parameter('node_name', '')
-        self.declare_parameter('reasoning_period', 5)
+        self.declare_parameter('reasoning_period', 2)
         self.declare_parameter('use_reconfigure_srv', True)
 
         # Whether or not to use system modes reconfiguration
@@ -72,10 +71,6 @@ class RosReasoner(ROS2Node, Reasoner):
             self.execute = self.execute_ros
 
         self.is_initialized = False
-        self.mode_change_srv_future = None
-        self.req_reconfiguration_result = None
-
-        self.node_name = self.get_parameter('node_name').value
 
         self.cb_group = ReentrantCallbackGroup()
 
@@ -103,11 +98,11 @@ class RosReasoner(ROS2Node, Reasoner):
         # Get desired_configuration_name from parameters
         self.set_initial_fd(self.get_parameter('desired_configuration').value)
 
-        timer_rate = self.get_parameter('reasoning_period').value
+        timer_period = self.get_parameter('reasoning_period').value
 
-        self.feedback_rate = self.create_rate(timer_rate)
+        self.feedback_rate = self.create_rate(1/timer_period)
         self.metacontrol_loop_timer = self.create_timer(
-            timer_rate,
+            timer_period,
             self.metacontrol_loop_callback,
             callback_group=self.cb_group)
 
@@ -141,22 +136,31 @@ class RosReasoner(ROS2Node, Reasoner):
         self.call_instance_service('p1', 'path')
 
     def objective_cancel_goal_callback(self, cancel_request):
-        self.logger.info('Cancel Action Callback!')
+        self.logger.info('Cancel action callback!')
         # Stop reasoning
 
-        if (cancel_request.qos_expected is None):
-            # Checks if there are previously defined objectives.
-            for old_objective in self.search_objectives():
-                self.remove_objective(old_objective.name)
-                return CancelResponse.ACCEPT
-        else:
-            if self.remove_objective(
-                    cancel_request.qos_expected.objective_id):
-                self.logger.info('Objective Cancelled')
-                return CancelResponse.ACCEPT
-            else:
-                self.logger.info('Not found')
+        if self.use_reconfiguration_srv:
+            function_name = self.get_function_name_from_objective_id(
+                cancel_request.request.qos_expected.objective_id)
+            reconfiguration_result = self.request_configuration(
+                'fd_unground',
+                function_name)
+
+            if reconfiguration_result is None \
+               or reconfiguration_result.success is False:
+                self.logger.info('Objective {} cancel req failed'.format(
+                    cancel_request.request.qos_expected.objective_id))
                 return CancelResponse.REJECT
+
+        if self.remove_objective(
+                cancel_request.request.qos_expected.objective_id):
+            self.logger.info('Objective {} cancelled'.format(
+                cancel_request.request.qos_expected.objective_id))
+            return CancelResponse.ACCEPT
+        else:
+            self.logger.info('Objective {} not found'.format(
+                cancel_request.request.qos_expected.objective_id))
+            return CancelResponse.REJECT
 
     def objective_action_callback(self, objective_handle):
 
@@ -170,9 +174,13 @@ class RosReasoner(ROS2Node, Reasoner):
 
         obj_created = self.create_objective(objective_handle.request)
         if obj_created:
-            while True:
+            send_feedback = True
+            while send_feedback:
                 feedback_msg = ControlQos.Feedback()
-                for objective in self.search_objectives():
+                objective = self.get_objective_from_objective_id(
+                    objective_handle.request.qos_expected.objective_id)
+
+                if objective is not None:
                     feedback_msg.qos_status.objective_id = objective.name
                     if objective.o_status is None:
                         feedback_msg.qos_status.objective_status = str(
@@ -182,24 +190,21 @@ class RosReasoner(ROS2Node, Reasoner):
                             objective.o_status)
 
                     feedback_msg.qos_status.objective_type = \
-                        objective_handle.request.qos_expected.objective_type
-                    break
-                fg_instance = self.onto.search_one(solvesO=objective)
-                if fg_instance is not None:
-                    feedback_msg.qos_status.selected_mode = \
-                        fg_instance.typeFD.name
+                        str(objective.typeF.name)
 
-                    for qa in fg_instance.hasQAvalue:
-                        QAValue = KeyValue()
-                        QAValue.key = str(qa.isQAtype.name)
-                        QAValue.value = str(qa.hasValue)
-                        feedback_msg.qos_status.qos.append(QAValue)
+                    fg_instance = self.onto.search_one(solvesO=objective)
+                    if fg_instance is not None:
+                        feedback_msg.qos_status.selected_mode = \
+                            fg_instance.typeFD.name
+
+                        for qa in fg_instance.hasQAvalue:
+                            QAValue = KeyValue()
+                            QAValue.key = str(qa.isQAtype.name)
+                            QAValue.value = str(qa.hasValue)
+                            feedback_msg.qos_status.qos.append(QAValue)
+                    objective_handle.publish_feedback(feedback_msg)
                 else:
-                    if objective is None:
-                        objective_handle.canceled()
-                        break
-
-                objective_handle.publish_feedback(feedback_msg)
+                    send_feedback = False
 
                 self.feedback_rate.sleep()
             objective_handle.succeed()
@@ -241,7 +246,7 @@ class RosReasoner(ROS2Node, Reasoner):
                     up_binding = self.update_binding(diagnostic_status)
                     if up_binding == -1:
                         self.logger.warning(
-                            'Unkown Function Grounding: %s',
+                            'Unkown Function Grounding: %s' +
                             diagnostic_status.name)
                     elif up_binding == 0:
                         self.logger.warning(
@@ -266,31 +271,20 @@ class RosReasoner(ROS2Node, Reasoner):
                                 diagnostic_status.values[0].value))
                     else:
                         self.logger.warning(
-                            'Unsupported CS Message received: %s ', str(
+                            'Unsupported CS Message received: %s ' + str(
                                 diagnostic_status.values[0].key))
 
                 elif diagnostic_status.message == "QA status":
                     up_qa = self.update_qa(diagnostic_status)
-                    if up_qa:
-                        self.logger.info(
-                            'QA value received!\tTYPE: {0}\tVALUE: {1}'.format(
-                                diagnostic_status.values[0].key,
-                                diagnostic_status.values[0].value))
-                    else:
+                    if not up_qa:
                         self.logger.warning(
-                            'Unsupported QA TYPE received: %s ', str(
+                            'Unsupported QA TYPE received: %s ' + str(
                                 diagnostic_status.values[0].key))
-                else:
-                    self.logger.warning(
-                        'Unsupported Message received: %s ', str(
-                            diagnostic_status.values[0].key))
 
-    # for MVP with QAs - request the FD.name to reconfigure to
-    def request_configuration(self, desired_configuration, objective):
+    def request_configuration(self, desired_configuration, function_name):
         self.logger.warning(
-            'New Configuration for objective {0} requested: {1}'.format(
-                objective, desired_configuration))
-        self.req_reconfiguration_result = None
+            'New Configuration for function_name {0} requested: {1}'.format(
+                function_name, desired_configuration))
 
         mode_change_cli = self.create_client(
                 MetacontrolFD,
@@ -304,24 +298,26 @@ class RosReasoner(ROS2Node, Reasoner):
 
         try:
             req = MetacontrolFD.Request()
-            req.required_function_name = str(objective.typeF.name)
+            req.required_function_name = function_name
             req.required_fd_name = desired_configuration
-
             mode_change_response = mode_change_cli.call(req)
         except Exception as e:
-            self.logger().info('Request creation failed %r' % (e,))
+            self.logger.info('Request creation failed {}'.format(e))
             return None
         else:
             return mode_change_response
 
-
     def execute_ros(self, desired_configurations):
+        if self.has_objective() is False or desired_configurations == dict():
+            return
+
         self.logger.info('  >> Started MAPE-K ** EXECUTION **')
         self.logger.info(
-                'desired_configurations are: {}'.format(desired_configurations))
+                'desired_configurations are: {}'.format(
+                    desired_configurations))
         for objective in desired_configurations:
             reconfiguration_result = self.request_configuration(
-                desired_configurations[objective], objective)
+                desired_configurations[objective], str(objective.typeF.name))
 
             if reconfiguration_result is not None \
                and reconfiguration_result.success is True:
