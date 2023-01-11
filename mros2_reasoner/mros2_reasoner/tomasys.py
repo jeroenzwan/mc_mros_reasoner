@@ -246,18 +246,15 @@ def obtain_function_design(o, tbox):
     # discard those FD that will not meet objective NFRs
 
     fds_for_obj = filter_fds(o, suitable_fds, tbox)
+    fd_with_qa = []
     if fds_for_obj != []:
         best_utility = 0
         for fd in fds_for_obj:
             utility_fd = utility(fd)
             logging.warning("== Utility for %s : %f", fd.name, utility_fd)
-            fd_with_qa.append([fd, utility_fd])
             # if fd != current_fd:
             utility_fd = utility(fd)
-            logging.warning("== Utility for %s : %f", fd.name, utility_fd)
-            if utility_fd > best_utility:
-                best_fd = fd
-                best_utility = utility_fd
+            fd_with_qa.append([fd, utility_fd])
 
         return fd_with_qa
     else:
@@ -325,6 +322,9 @@ def meet_nfrs(o, fds):
         for nfr in o.hasNFR:
             qas = [qa for qa in fd.hasQAestimation
                    if str(qa.isQAtype) == str(nfr.isQAtype)]
+            logging.warning('+++++++++++++++++++++++++++++++')
+            logging.warning('nfr.hasValue is {}'.format(
+                                nfr.hasValue))
         if len(qas) != 1:
             logging.warning(
                 'FD has no expected value for this QA or multiple definitions')

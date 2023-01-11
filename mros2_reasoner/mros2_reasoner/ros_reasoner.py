@@ -276,6 +276,12 @@ class RosReasoner(ROS2Node, Reasoner):
 
                 elif diagnostic_status.message == "QA status":
                     up_qa = self.update_qa(diagnostic_status)
+                    self.logger.info('------------------------------')
+                    self.logger.info(
+                        '\nCS Message received!' +
+                        '\tTYPE: {0}\tVALUE: {1}'.format(
+                            diagnostic_status.values[0].key,
+                            diagnostic_status.values[0].value))
                     if not up_qa:
                         self.logger.warning(
                             'Unsupported QA TYPE received: %s ' + str(

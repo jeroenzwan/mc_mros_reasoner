@@ -101,6 +101,8 @@ class MockNode(Node):
         diag_msg.status.append(status_msg)
 
         self.diagnostics_publisher.publish(diag_msg)
+        self.get_logger().info('mockiness value is {}'.format(
+                    self.mockiness_level))
 
         self.mockiness_level -= 0.1
 
