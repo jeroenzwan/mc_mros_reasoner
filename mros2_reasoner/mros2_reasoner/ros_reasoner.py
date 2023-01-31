@@ -44,8 +44,6 @@ class RosReasoner(ROS2Node, Reasoner):
         self.use_reconfiguration_srv = self.get_parameter(
             'use_reconfigure_srv').value
 
-        self.iterator = 0
-
         self.instance_cli = self.create_client(AffectParam,
                 '/problem_expert/add_problem_instance')
         while not self.instance_cli.wait_for_service(timeout_sec=1.0):
@@ -456,7 +454,7 @@ class RosReasoner(ROS2Node, Reasoner):
 
         if current_fd is not None:
             self.call_predicate_service('fd_selected',
-                    [current_fd.name, 'functiondesign'])
+                    [[current_fd.name, 'functiondesign']])
 
         # Execute
         self.execute(desired_configuration)
