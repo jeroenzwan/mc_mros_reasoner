@@ -23,6 +23,7 @@ from plansys2_msgs.srv import AffectParam, AffectNode, AddProblemGoal, GetStates
 class RosReasoner(ROS2Node, Reasoner):
 
     def __init__(self):
+
         ROS2Node.__init__(self, 'mros2_reasoner_node')
 
         self.declare_parameter('model_file', Parameter.Type.STRING)
@@ -58,6 +59,16 @@ class RosReasoner(ROS2Node, Reasoner):
                 '/problem_expert/get_problem_predicates')
         while not self.get_predicates_cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('get predicates service not available, waiting again...')
+
+        self.function_cli = self.create_client(AffectNode,
+                '/problem_expert/add_problem_function')
+        while not self.function_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('function service not available, waiting again...')
+
+        self.goal_cli = self.create_client(AddProblemGoal,
+                '/problem_expert/add_problem_goal')
+        while not self.goal_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('goal service not available, waiting again...')
 
         self.remove_predicate_cli = self.create_client(AffectNode,
                 '/problem_expert/remove_problem_predicate')
@@ -106,6 +117,8 @@ class RosReasoner(ROS2Node, Reasoner):
 
         self.logger = self.get_logger()
 
+        self.old_available_fds_filtered = None
+
         # Reasoner initialization completed
         self.is_initialized = True
         self.logger.info('[RosReasoner] -- Reasoner Initialization Ok')
@@ -121,17 +134,106 @@ class RosReasoner(ROS2Node, Reasoner):
 
     def set_initial_instances_pddl(self):
 
-        self.call_instance_service('bluerov', 'uuv')
+        # self.call_instance_service('f_mock','function')
 
+        # self.call_instance_service('fd_mock1','functiondesign')
+        # self.call_instance_service('fd_mock2','functiondesign')
+        # self.call_instance_service('fd_mock3','functiondesign')
+
+        # self.call_instance_service('f_fake','function')
+
+        # self.call_instance_service('fd_fake1','functiondesign')
+        # self.call_instance_service('fd_fake2','functiondesign')
+        # self.call_instance_service('fd_fake3','functiondesign')
+
+        self.call_instance_service('bluerov', 'uuv')
         self.call_instance_service('pl1', 'pipeline')
 
-        self.call_instance_service('fd_mock1', 'functiondesign')
+        self.call_instance_service('f_action', 'function')
+        self.call_instance_service('fd_recharge', 'functiondesign')
+        self.call_instance_service('fd_search_pipeline', 'functiondesign')
+        self.call_instance_service('fd_follow_pipeline', 'functiondesign')
 
-        self.call_instance_service('fd_mock2', 'functiondesign')
+        self.call_instance_service('f_maintain_motion', 'function')
+        # self.call_instance_service('fd_all_thrusters', 'functiondesign')
+        # self.call_instance_service('fd_recover', 'functiondesign')
+        self.call_instance_service('fd_set_speed_high', 'functiondesign')
+        self.call_instance_service('fd_set_speed_medium', 'functiondesign')
+        self.call_instance_service('fd_set_speed_low', 'functiondesign')
 
-        self.call_instance_service('fd_mock3', 'functiondesign')
+        self.call_instance_service('f_go_to_recharge_waypoints', 'function')
+        self.call_instance_service('fd_generate_recharge_wp', 'functiondesign')
 
-        self.call_instance_service('p1', 'path')
+        self.call_instance_service('f_search_pipeline_waypoints', 'function')
+        self.call_instance_service('fd_spiral_low', 'functiondesign')
+        self.call_instance_service('fd_spiral_medium', 'functiondesign')
+        self.call_instance_service('fd_spiral_high', 'functiondesign')
+        
+        self.call_instance_service('f_follow_pipeline_waypoints', 'function')
+        self.call_instance_service('fd_generate_follow_wp', 'functiondesign')
+
+        self.call_predicate_service('pipeline_not_found', [['pl1','pipeline']])
+        self.call_predicate_service('pipeline_not_inspected', [['pl1','pipeline']])
+
+        self.call_predicate_service('search_requires_f', [['fd_search_pipeline','functiondesign'],
+                    ['f_maintain_motion','function'],['f_search_pipeline_waypoints','function']])
+        self.call_predicate_service('follow_requires_f', [['fd_follow_pipeline','functiondesign'],
+                    ['f_maintain_motion','function'],['f_follow_pipeline_waypoints','function']])
+        self.call_predicate_service('recharge_requires_f', [['fd_recharge','functiondesign'],
+                    ['f_maintain_motion','function'],['f_go_to_recharge_waypoints','function']])
+
+        self.call_function_service('speed',
+                [['fd_set_speed_high','functiondesign']], 20.)
+
+        self.call_function_service('speed',
+                [['fd_set_speed_medium','functiondesign']], 30.)
+
+        self.call_function_service('speed',
+                [['fd_set_speed_low','functiondesign']], 40.)
+
+        self.call_function_service('speed',
+                [['fd_generate_recharge_wp','functiondesign']], 5.)
+
+        self.call_function_service('speed',
+                [['fd_spiral_low','functiondesign']], 20.)
+
+        self.call_function_service('speed',
+                [['fd_spiral_medium','functiondesign']], 10.)
+
+        self.call_function_service('speed',
+                [['fd_spiral_high','functiondesign']], 5.)
+
+        self.call_function_service('speed',
+                [['fd_generate_follow_wp','functiondesign']], 5.)
+
+        self.call_function_service('battery_usage',
+                [['fd_set_speed_high','functiondesign']], 40.)
+
+        self.call_function_service('battery_usage',
+                [['fd_set_speed_medium','functiondesign']], 30.)
+
+        self.call_function_service('battery_usage',
+                [['fd_set_speed_low','functiondesign']], 20.)
+                
+        self.call_function_service('battery_usage',
+                [['fd_recover','functiondesign']], 5.)
+
+        self.call_function_service('battery_usage',
+                [['fd_spiral_low','functiondesign']], 30.)
+
+        self.call_function_service('battery_usage',
+                [['fd_spiral_medium','functiondesign']], 35.)
+
+        self.call_function_service('battery_usage',
+                [['fd_spiral_high','functiondesign']], 40.)
+
+        self.call_function_service('battery_usage',
+                [['fd_generate_follow_wp','functiondesign']], 30.)
+
+        self.call_function_service('battery_level',
+                [['bluerov','uuv']], 100.)
+
+        self.call_goal_service('pipeline_inspected', ['pl1', 'pipeline'], 5)
 
     def objective_cancel_goal_callback(self, cancel_request):
         self.logger.info('Cancel action callback!')
@@ -268,7 +370,6 @@ class RosReasoner(ROS2Node, Reasoner):
 
                 elif diagnostic_status.message == "QA status":
                     up_qa = self.update_qa(diagnostic_status)
-                    self.logger.info('------------------------------')
                     self.logger.info(
                         '\nCS Message received!' +
                         '\tTYPE: {0}\tVALUE: {1}'.format(
@@ -331,7 +432,6 @@ class RosReasoner(ROS2Node, Reasoner):
                 return
 
     def call_instance_service(self, _name, _type):
-        self.logger.info('entered call_instance_service')
         msg = Param()
         msg.name = _name
         msg.type = _type
@@ -348,9 +448,6 @@ class RosReasoner(ROS2Node, Reasoner):
             return instance_call_response
 
     def call_predicate_service(self, _name, _params):
-        self.logger.info('entered call_predicate_service')
-        self.logger.info(str(_name))
-        self.logger.info(str(_params))
         msg = Node()
         msg.node_type = 5
         msg.name = _name
@@ -375,6 +472,39 @@ class RosReasoner(ROS2Node, Reasoner):
         else:
             return predicate_call_response
 
+        # future = self.predicate_cli.call_async(req)
+        # rclpy.spin_until_future_complete(self, future)
+        # return future
+
+    def call_goal_service(self, _pred, _param, _type):
+        msg = Tree()
+        node = Node()
+        node.node_type = _type
+        node.name = _pred
+
+        param = Param()
+        param.name = _param[0]
+        param.type = _param[1]
+
+        node.parameters = [param]
+
+        msg.nodes = [node]
+
+        req = AddProblemGoal.Request()
+        req.tree = msg
+
+        try:
+            goal_call_response = self.goal_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return goal_call_response
+
+        # future = self.goal_cli.call_async(req)
+        # rclpy.spin_until_future_complete(self, future)
+        # return future
+
     def get_predicates_pddl(self):
         req = GetStates.Request()
         req.request = Empty()
@@ -397,7 +527,6 @@ class RosReasoner(ROS2Node, Reasoner):
             self.call_remove_predicate_service(predicate)
 
     def call_remove_predicate_service(self, predicate):
-        self.logger.info('entered call_remove_predicate_service')
         # self.logger.info(str(_name))
         # self.logger.info(str(_params))
         # msg = Node()
@@ -417,6 +546,54 @@ class RosReasoner(ROS2Node, Reasoner):
         else:
             return predicate_call_response
 
+    def call_function_service(self, _name, _params, _value):
+        msg = Node()
+        msg.node_type = 6
+        msg.name = _name
+        msg.value = _value
+
+        param_list = []
+        for _param in _params:
+            param = Param()
+            param.name = _param[0]
+            param.type = _param[1]
+            param_list.append(param)
+
+        msg.parameters = param_list
+
+        req = AffectNode.Request()
+        req.node = msg
+
+        try:
+            function_call_response = self.function_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return function_call_response
+
+        # future = self.function_cli.call_async(req)
+        # rclpy.spin_until_future_complete(self, future)
+        # return future
+
+    def plan_pddl(self, available_fds_filtered):
+        self.logger.info('  >> Started MAPE-K ** PLAN adaptation PDDL  **')
+
+        self.set_initial_instances_pddl()
+
+        if available_fds_filtered is not []:
+            self.logger.info('available_configurations are {}'.format(
+                                available_fds_filtered))
+            # self.remove_predicates_pddl()
+            
+            for available_fd in available_fds_filtered:
+                suc = self.call_predicate_service('fd_available',
+                        [[available_fd[0].name,'functiondesign'],
+                            [available_fd[0].solvesF.name,'function']])
+
+        success = True           
+        return success
+
     # main metacontrol loop
     def metacontrol_loop_callback(self):
 
@@ -426,32 +603,35 @@ class RosReasoner(ROS2Node, Reasoner):
             return
 
         # Analyze
-        objectives_in_error = self.analyze()
+        # objectives_in_error = self.analyze()
 
+        objectives_in_error, available_fds_filtered = self.analyze_pddl()
+        
         # Plan
-        desired_configuration = self.plan(objectives_in_error)
+        # desired_configuration = self.plan(objectives_in_error)
 
-        self.set_initial_instances_pddl()
+        # self.set_initial_instances_pddl()
 
-        available_configurations, current_fd = \
-                self.plan_pddl(objectives_in_error)
+        if (objectives_in_error != []) or (available_fds_filtered != self.old_available_fds_filtered):
+            plan_success = self.plan_pddl(available_fds_filtered)
 
-        if available_configurations is not None:
-            self.logger.info('available_configurations is not None')
-            self.logger.info('available_configurations is {}'.format(
-                                available_configurations))
-            self.remove_predicates_pddl()
+        # if available_configurations is not None:
+            # self.logger.info('available_configurations is not None')
+            # self.logger.info('available_configurations is {}'.format(
+                                # available_configurations))
+            # self.remove_predicates_pddl()
             
-            for available_configuration in available_configurations:
-                self.call_predicate_service('available_fd',
-                        [[available_configuration[0].name,'functiondesign']])
+            # for available_configuration in available_configurations:
+                # self.call_predicate_service('available_fd',
+                        # [[available_configuration[0].name,'functiondesign']])
 
-        if current_fd is not None:
-            self.call_predicate_service('fd_selected',
-                    [[current_fd.name, 'functiondesign']])
+        # if current_fd is not None:
+            # self.call_predicate_service('fd_selected',
+                    # [[current_fd.name, 'functiondesign']])
 
         # Execute
-        self.execute(desired_configuration)
+        # self.execute(desired_configuration)
+        self.old_available_fds_filtered = available_fds_filtered
 
         self.logger.info(
             'Exited metacontrol_loop_callback')

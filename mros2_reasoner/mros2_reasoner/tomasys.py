@@ -154,6 +154,12 @@ def get_objectives_in_error(objectives):
             objectives_internal_error.append(o)
     return objectives_internal_error
 
+def get_available_fd(function_designs):
+    available_fd = []
+    for fd in function_designs:
+        if fd.fd_realisability == None:
+            available_fd.append(fd)
+    return available_fd
 
 def get_function_grounding(o, tbox):
     fgs = tbox.FunctionGrounding.instances()
@@ -261,6 +267,42 @@ def obtain_function_design(o, tbox):
         logging.warning("\t\t\t == *** NO SOLUTION FOUND ***")
         return None
 
+def obtain_function_design_analyze(objs, fds, tbox):
+    logging.warning("\t\t\t == Obtain Function Designs Analyze ==")
+    # logging.warning("== FunctionDesigns AVAILABLE: %s",
+    #                 str([fd.name for fd in fds]))
+
+    # fiter fds to only those available
+    # FILTER if FD realisability is NOT FALSE (TODO check SWRL rules are
+    # complete for this)
+    realisable_fds = [fd for fd in fds if fd.fd_realisability is not False]
+    # logging.warning("== FunctionDesigns REALISABLE: %s",
+    #                 str([fd.name for fd in realisable_fds]))
+    # discard FDs already grounded for this objective when objective in error
+    for fd in fds:
+        for o in objs:
+            if (o in fd.fd_error_log):
+                fds.remove(fd) 
+    # logging.warning("== FunctionDesigns NOT IN ERROR LOG: %s",
+    #                 str([fd.name for fd in fds]))
+    # discard those FD that will not meet objective NFRs
+
+    fds_for_obj = filter_fds_analyze(objs, fds, tbox)
+    fd_with_qa = []
+    if fds_for_obj != []:
+        best_utility = 0
+        for fd in fds_for_obj:
+            utility_fd = utility(fd)
+            # logging.warning("== Utility for %s : %f", fd.name, utility_fd)
+            # if fd != current_fd:
+            utility_fd = utility(fd)
+            fd_with_qa.append([fd, utility_fd])
+
+        return fd_with_qa
+    else:
+        logging.warning("\t\t\t == *** NO SOLUTION FOUND ***")
+        return None
+
 
 def ground_fd(fd, objective, tbox, abox):
     """Given a FunctionDesign fd and an Objective objective, creates an
@@ -310,6 +352,16 @@ def filter_fds(o, fds, tbox):
             fd.name for fd in filtered])
     return filtered
 
+def filter_fds_analyze(objs, fds, tbox):
+    filtered = meet_nfrs_analyze(objs, fds)
+    logging.warning(
+        "== FunctionDesigns also meeting NFRs: %s", [
+            fd.name for fd in filtered])
+    filtered = filter_water_visibility_analyze(fds, tbox)
+    logging.warning(
+        "== FunctionDesigns also meeting custom filters: %s", [
+            fd.name for fd in filtered])
+    return filtered
 
 # Returns all FunctionDesign individuals from a given set (fds) that
 # comply with the NFRs of a given Objective individual (o)
@@ -322,7 +374,6 @@ def meet_nfrs(o, fds):
         for nfr in o.hasNFR:
             qas = [qa for qa in fd.hasQAestimation
                    if str(qa.isQAtype) == str(nfr.isQAtype)]
-            logging.warning('+++++++++++++++++++++++++++++++')
             logging.warning('nfr.hasValue is {}'.format(
                                 nfr.hasValue))
         if len(qas) != 1:
@@ -342,8 +393,62 @@ def meet_nfrs(o, fds):
 
     return filtered
 
+def meet_nfrs_analyze(objs, fds):
+    if fds == []:
+        return fds
+
+    nfrs = 0
+    for o in objs:
+        nfrs += len(o.hasNFR)
+    if nfrs == 0:
+        return fds
+
+    filtered = []
+    for fd in fds:
+        logging.warning(str(fd.name))
+        for o in objs:
+            for nfr in o.hasNFR:
+                qas = [qa for qa in fd.hasQAestimation
+                       if str(qa.isQAtype) == str(nfr.isQAtype)]
+                logging.warning('nfr.hasValue is {}'.format(
+                                    nfr.hasValue))
+                if len(qas) != 1:
+                    logging.warning(
+                        'FD has no expected value for this QA or multiple definitions')
+                    break
+                else:
+                    if nfr.isQAtype.name == 'energy':
+                        if qas[0].hasValue > nfr.hasValue:
+                            break
+                    elif nfr.isQAtype.name == 'safety':
+                        if qas[0].hasValue < nfr.hasValue:
+                            break
+                filtered.append(fd)
+    if filtered == []:
+        logging.warning("No FDs meet NFRs")
+
+    return filtered
+
 
 def filter_water_visibility(o, fds, tbox):
+    qa_key = 'water_visibility'
+    observed_water_visibility = get_measured_qa(qa_key, tbox)
+    filtered = fds.copy()
+    if observed_water_visibility is not None:
+        for fd in fds:
+            qas = [qa for qa in fd.hasQAestimation
+                   if str(qa.isQAtype.name) == qa_key]
+            if len(qas) != 1:
+                logging.warning(
+                    "FD " + str(fd.name) +
+                    " has no expected value or multiple definitions for"
+                    + qa_key + "QA")
+            else:
+                if observed_water_visibility < qas[0].hasValue:
+                    filtered.remove(fd)
+    return filtered
+
+def filter_water_visibility_analyze(fds, tbox):
     qa_key = 'water_visibility'
     observed_water_visibility = get_measured_qa(qa_key, tbox)
     filtered = fds.copy()

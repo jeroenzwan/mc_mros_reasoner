@@ -10,9 +10,11 @@ import sys
 from threading import Lock
 
 from mros2_reasoner.tomasys import get_objectives_in_error
+from mros2_reasoner.tomasys import get_available_fd
 from mros2_reasoner.tomasys import ground_fd
 from mros2_reasoner.tomasys import obtain_best_function_design
 from mros2_reasoner.tomasys import obtain_function_design
+from mros2_reasoner.tomasys import obtain_function_design_analyze
 from mros2_reasoner.tomasys import get_current_function_design
 from mros2_reasoner.tomasys import print_ontology_status
 from mros2_reasoner.tomasys import read_ontology_file
@@ -62,6 +64,10 @@ class Reasoner:
         objectives = self.onto.search(type=self.tomasys.Objective)
         return objectives
 
+    def search_function_designs(self):
+        fds = self.onto.search(type=self.tomasys.FunctionDesign)
+        return fds
+
     def has_objective(self):
         objectives = self.search_objectives()
         has_objective = False
@@ -86,6 +92,10 @@ class Reasoner:
 
     def get_objectives_in_error(self):
         return get_objectives_in_error(self.search_objectives())
+
+    def get_available_fd(self):
+        fds = self.search_function_designs()
+        return get_available_fd(fds)
 
     def get_new_tomasys_objective(self, objective_name, iri_seed):
         """ Creates Objective individual in the KB given a desired name and a
@@ -283,6 +293,19 @@ class Reasoner:
                 "No FD found to solve Objective {} ".format(obj_in_error.name))
         return desired_configurations
 
+    def select_desired_configuration_analyze_pddl(self, objs_in_error, fds):
+        self.logger.info(" >> Reasoner searches an FD ")
+        desired_configurations = obtain_function_design_analyze(
+            objs_in_error, fds, self.tomasys)
+
+        self.logger.info(
+            "desired_configurations are {}".format(desired_configurations))
+
+        if desired_configurations is None:
+            self.logger.warning(
+                "No FD found to solve Objective {} ".format(objs_in_error.name))
+        return desired_configurations
+
 
     # MAPE-K: Analyze step
     def analyze(self):
@@ -313,7 +336,46 @@ class Reasoner:
                 self.logger.warning(
                     "Objective {0} in status: {1}".format(
                         obj_in_error.name, obj_in_error.o_status))
+
         return objectives_in_error
+
+    def analyze_pddl(self):
+        # PRINT system status
+        print_ontology_status(self.tomasys)
+
+        # objectives_in_error = []
+        # if self.has_objective() is False:
+        #     return objectives_in_error, []
+
+        self.logger.info(
+            '>> Started MAPE-K ** Analysis PDDL (ontological reasoning) **')
+
+        # EXEC REASONING to update ontology with inferences
+        if self.perform_reasoning() is False:
+            self.logger.error('>> Reasoning error')
+            self.onto.save(
+                file="error_reasoning.owl", format="rdfxml")
+            return objectives_in_error, []
+
+        # EVALUATE functional hierarchy (objectives statuses) (MAPE - Analysis)
+        objectives_in_error = self.get_objectives_in_error()
+        if objectives_in_error == []:
+            self.logger.info(
+                ">> No Objectives in ERROR: no adaptation is needed")
+        else:
+            for obj_in_error in objectives_in_error:
+                self.logger.warning(
+                    "Objective {0} in status: {1}".format(
+                        obj_in_error.name, obj_in_error.o_status))
+
+        available_fds = self.get_available_fd()
+        # for available_fd in available_fds:
+        #     self.logger.info(str(available_fd))
+
+        available_fds_filtered = self.select_desired_configuration_analyze_pddl(
+                objectives_in_error, available_fds)
+
+        return objectives_in_error, available_fds_filtered
 
     # MAPE-K: Plan step
     def plan(self, objectives_in_error):
@@ -332,24 +394,6 @@ class Reasoner:
                 if desired_config is not None:
                     desired_configurations[obj_in_error] = desired_config
         return desired_configurations
-
-    def plan_pddl(self, objectives_in_error):
-        self.logger.info('  >> Started MAPE-K ** PLAN adaptation PDDL  **')
-
-        available_configurations = None
-        for obj_in_error in objectives_in_error:
-            self.handle_updatable_objectives(obj_in_error)
-            self.logger.info('in objectives_in_error loop')
-
-            available_configurations = \
-                self.select_desired_configuration_pddl(obj_in_error)
-
-        current_fd = get_current_function_design(obj_in_error, self.tomasys)
-
-        if current_fd is not None:
-            self.logger.info(
-                "current_fd is {}".format(str(current_fd.name)))
-        return available_configurations, current_fd
 
     # MAPE-K: Execute step
     def execute(self, desired_configurations):
