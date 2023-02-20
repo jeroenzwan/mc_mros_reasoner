@@ -105,6 +105,7 @@ def print_ontology_status(kb_box):
         [(c.name, c.c_status)
             for c in list(kb_box.ComponentState.instances())]))
 
+    logging.warning("length of FGs is "+str(len(list(kb_box.FunctionGrounding.instances()))))
     for i in list(kb_box.FunctionGrounding.instances()):
         logging.warning(
             "\n\tFG: {0}  Status: {1}  Solves: {2}  FD: {3}  QAvalues: {4}"

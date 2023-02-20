@@ -286,6 +286,11 @@ class RosReasoner(ROS2Node, Reasoner):
                     feedback_msg.qos_status.objective_type = \
                         str(objective.typeF.name)
 
+                    self.request_configuration(
+                            objective_handle.request.qos_expected.selected_mode, objective.typeF.name)
+                    self.set_new_grounding(
+                            objective_handle.request.qos_expected.selected_mode, objective)
+
                     fg_instance = self.onto.search_one(solvesO=objective)
                     if fg_instance is not None:
                         feedback_msg.qos_status.selected_mode = \
