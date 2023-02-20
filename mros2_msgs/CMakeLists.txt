@@ -11,13 +11,15 @@ find_package(action_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(plansys2_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/QoS.msg"
   "srv/MetacontrolFD.srv"
+  "action/ExecutePlan.action"
   "action/NavigateToPoseQos.action"
   "action/ControlQos.action"
-  DEPENDENCIES builtin_interfaces geometry_msgs std_msgs action_msgs diagnostic_msgs
+  DEPENDENCIES builtin_interfaces geometry_msgs std_msgs action_msgs diagnostic_msgs plansys2_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)

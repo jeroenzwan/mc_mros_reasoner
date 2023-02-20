@@ -1,6 +1,6 @@
 import rclpy
 
-from rclpy.action import ActionServer
+from rclpy.action import ActionServer, ActionClient
 from rclpy.action import CancelResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node as ROS2Node
@@ -18,7 +18,9 @@ from mros2_msgs.msg import QoS
 from mros2_msgs.srv import MetacontrolFD
 
 from plansys2_msgs.msg import Param, Node, Tree
-from plansys2_msgs.srv import AffectParam, AffectNode, AddProblemGoal, GetStates
+from plansys2_msgs.srv import AffectParam, AffectNode, AddProblemGoal, GetStates, GetPlan
+from plansys2_msgs.srv import GetPlan, GetDomain, GetProblem
+from mros2_msgs.action import ExecutePlan
 
 class RosReasoner(ROS2Node, Reasoner):
 
@@ -74,6 +76,28 @@ class RosReasoner(ROS2Node, Reasoner):
                 '/problem_expert/remove_problem_predicate')
         while not self.remove_predicate_cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('remove predicate service not available, waiting again...')
+
+        self.plan_cli = self.create_client(GetPlan,
+                '/planner/get_plan')
+        while not self.plan_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('plan service not available, waiting again...')
+
+        self.domain_cli = self.create_client(GetDomain,
+                '/domain_expert/get_domain')
+        while not self.domain_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('plan service not available, waiting again...')
+
+        self.problem_cli = self.create_client(GetProblem,
+                '/problem_expert/get_problem')
+        while not self.problem_cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('plan service not available, waiting again...')
+
+        self.plan_handler_action_cli = ActionClient(
+            self,
+            ExecutePlan,
+            self.plan_action_callback,
+            'plan_handler',
+            cancel_callback=self.plan_cancel_goal_callback)
 
         # Use execute_ros instead of Reasoner.execute
         if self.use_reconfiguration_srv:
@@ -580,21 +604,77 @@ class RosReasoner(ROS2Node, Reasoner):
         # future = self.function_cli.call_async(req)
         # rclpy.spin_until_future_complete(self, future)
         # return future
+    
+    def call_plan_service(self, domain, problem):
+        req = GetPlan.Request()
+        req.domain = domain
+        req.problem = problem
+
+        try:
+            plan_call_response = self.plan_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return plan_call_response
+
+    def call_domain_service(self):
+        req = GetDomain.Request()
+
+        try:
+            domain_call_response = self.domain_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return domain_call_response
+
+    def call_problem_service(self):
+        req = GetProblem.Request()
+
+        try:
+            problem_call_response = self.problem_cli.call(req)
+        except Exception as e:
+            self.logger().info('Request creation failed %r' % (e,))
+            return None
+        else:
+            return problem_call_response
+
+    def plan_action_callback(self, plan):
+        goal_msg = ExecutePlan.Goal()
+        goal_msg.plan = plan
+
+        self.plan_handler_action_cli.wait_for_server()
+
+        plan_handle = self.plan_handler_action_cli.send_goal(goal_msg)
+        return plan_handle
 
     def plan_pddl(self, available_fds_filtered):
         self.logger.info('  >> Started MAPE-K ** PLAN adaptation PDDL  **')
 
         self.set_initial_instances_pddl()
 
-        if available_fds_filtered is not []:
-            self.logger.info('available_configurations are {}'.format(
-                                available_fds_filtered))
-            # self.remove_predicates_pddl()
+        # domain = self.call_domain_service()    
+        # problem = self.call_problem_service()    
+        # plan = self.call_plan_service(domain.domain, problem.problem)
+
+        if self.old_plan_handle is not None: 
+            self.plan_handler_action_cli._cancel_goal(self.old_plan_handle)
+            plan_handle = self.plan_action_callback()
+        else:
+            plan_handle = self.plan_action_callback()
+
+        # if available_fds_filtered is not []:
+        #     self.logger.info('available_configurations are {}'.format(
+        #                         available_fds_filtered))
+        #     # self.remove_predicates_pddl()
             
-            for available_fd in available_fds_filtered:
-                suc = self.call_predicate_service('fd_available',
-                        [[available_fd[0].name,'functiondesign'],
-                            [available_fd[0].solvesF.name,'function']])
+        #     for available_fd in available_fds_filtered:
+        #         suc = self.call_predicate_service('fd_available',
+        #                 [[available_fd[0].name,'functiondesign'],
+        #                     [available_fd[0].solvesF.name,'function']])
+
+        self.old_plan_handle = plan_handle
 
         success = True           
         return success
