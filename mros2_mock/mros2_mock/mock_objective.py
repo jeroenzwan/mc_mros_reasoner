@@ -26,7 +26,7 @@ class MockNode(Node):
         timer_period = 4.0  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-        self.mockiness_level = 1
+        self.water_visibility_level = 3.5
 
     def set_objectives(self):
         self.get_logger().info('Waiting for server')
@@ -84,7 +84,7 @@ class MockNode(Node):
                 'QoS Status: Key: {0} - Value {1}'.format(qos.key, qos.value))
 
     def timer_callback(self):
-        if self.mockiness_level <= 0.1:
+        if self.water_visibility_level <= 1:
             self.destroy_node()
             return
 
@@ -94,17 +94,17 @@ class MockNode(Node):
         status_msg.level = DiagnosticStatus.OK
         status_msg.name = ""
         key_value = KeyValue()
-        key_value.key = "mockiness"
-        key_value.value = str(self.mockiness_level)
+        key_value.key = "water_visibility"
+        key_value.value = str(self.water_visibility_level)
         status_msg.values.append(key_value)
         status_msg.message = "QA status"
         diag_msg.status.append(status_msg)
 
         self.diagnostics_publisher.publish(diag_msg)
-        self.get_logger().info('mockiness value is {}'.format(
-                    self.mockiness_level))
+        self.get_logger().info('water_visibility value is {}'.format(
+                    self.water_visibility_level))
 
-        self.mockiness_level -= 0.1
+        self.water_visibility_level -= 0.2
 
 
 if __name__ == '__main__':
@@ -113,7 +113,6 @@ if __name__ == '__main__':
     rclpy.init(args=sys.argv)
 
     mock_node = MockNode()
-    mock_node.set_objectives()
     rclpy.spin(mock_node)
 
     rclpy.shutdown()

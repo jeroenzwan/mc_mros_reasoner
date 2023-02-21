@@ -10,6 +10,7 @@ from system_modes_msgs.srv import ChangeMode
 from std_msgs.msg import Empty
 from diagnostic_msgs.msg import DiagnosticArray
 from diagnostic_msgs.msg import KeyValue
+from unique_identifier_msgs.msg import UUID
 
 from mros2_reasoner.reasoner import Reasoner
 
@@ -95,9 +96,7 @@ class RosReasoner(ROS2Node, Reasoner):
         self.plan_handler_action_cli = ActionClient(
             self,
             ExecutePlan,
-            self.plan_action_callback,
-            'plan_handler',
-            cancel_callback=self.plan_cancel_goal_callback)
+            'plan_handler')
 
         # Use execute_ros instead of Reasoner.execute
         if self.use_reconfiguration_srv:
@@ -142,6 +141,9 @@ class RosReasoner(ROS2Node, Reasoner):
         self.logger = self.get_logger()
 
         self.old_available_fds_filtered = None
+        self.plan_executing = False
+        self.plan_handle = None
+        self.functions_set = False
 
         # Reasoner initialization completed
         self.is_initialized = True
@@ -231,28 +233,28 @@ class RosReasoner(ROS2Node, Reasoner):
                 [['fd_generate_follow_wp','functiondesign']], 5.)
 
         self.call_function_service('battery_usage',
-                [['fd_set_speed_high','functiondesign']], 40.)
+                [['fd_set_speed_high','functiondesign']], 30.)
 
         self.call_function_service('battery_usage',
-                [['fd_set_speed_medium','functiondesign']], 30.)
+                [['fd_set_speed_medium','functiondesign']], 20.)
 
         self.call_function_service('battery_usage',
-                [['fd_set_speed_low','functiondesign']], 20.)
+                [['fd_set_speed_low','functiondesign']], 10.)
                 
         self.call_function_service('battery_usage',
                 [['fd_recover','functiondesign']], 5.)
 
         self.call_function_service('battery_usage',
-                [['fd_spiral_low','functiondesign']], 30.)
+                [['fd_spiral_low','functiondesign']], 10.)
 
         self.call_function_service('battery_usage',
-                [['fd_spiral_medium','functiondesign']], 35.)
+                [['fd_spiral_medium','functiondesign']], 15.)
 
         self.call_function_service('battery_usage',
-                [['fd_spiral_high','functiondesign']], 40.)
+                [['fd_spiral_high','functiondesign']], 20.)
 
         self.call_function_service('battery_usage',
-                [['fd_generate_follow_wp','functiondesign']], 30.)
+                [['fd_generate_follow_wp','functiondesign']], 5.)
 
         self.call_function_service('battery_level',
                 [['bluerov','uuv']], 100.)
@@ -549,11 +551,10 @@ class RosReasoner(ROS2Node, Reasoner):
     def remove_predicates_pddl(self):
         predicates = self.get_predicates_pddl()
         for predicate in predicates.states:
-            self.logger.info('predicate name is {}'.format(
-                                predicate.name))
-            self.logger.info('predicate params are {}'.format(
-                                predicate.parameters))
-            self.call_remove_predicate_service(predicate)
+            if predicate.name == 'fd_available':
+                self.logger.info('removed predicate name is {}'.format(
+                                    predicate.name))
+                self.call_remove_predicate_service(predicate)
 
     def call_remove_predicate_service(self, predicate):
         # self.logger.info(str(_name))
@@ -640,9 +641,9 @@ class RosReasoner(ROS2Node, Reasoner):
         else:
             return problem_call_response
 
-    def plan_action_callback(self, plan):
+    def plan_action_callback(self, replan):
         goal_msg = ExecutePlan.Goal()
-        goal_msg.plan = plan
+        goal_msg.change_plan = replan
 
         self.plan_handler_action_cli.wait_for_server()
 
@@ -654,28 +655,33 @@ class RosReasoner(ROS2Node, Reasoner):
 
         self.set_initial_instances_pddl()
 
-        # domain = self.call_domain_service()    
-        # problem = self.call_problem_service()    
-        # plan = self.call_plan_service(domain.domain, problem.problem)
-
-        if self.old_plan_handle is not None: 
-            self.plan_handler_action_cli._cancel_goal(self.old_plan_handle)
-            plan_handle = self.plan_action_callback()
-        else:
-            plan_handle = self.plan_action_callback()
-
-        # if available_fds_filtered is not []:
-        #     self.logger.info('available_configurations are {}'.format(
-        #                         available_fds_filtered))
-        #     # self.remove_predicates_pddl()
+        
+        if available_fds_filtered is not []:
+            if self.functions_set:
+                self.remove_predicates_pddl()
+            self.logger.info('available_configurations are {}'.format(
+                                available_fds_filtered))
             
-        #     for available_fd in available_fds_filtered:
-        #         suc = self.call_predicate_service('fd_available',
-        #                 [[available_fd[0].name,'functiondesign'],
-        #                     [available_fd[0].solvesF.name,'function']])
+            for available_fd in available_fds_filtered:
+                self.call_predicate_service('fd_available',
+                        [[available_fd[0].name,'functiondesign'],
+                            [available_fd[0].solvesF.name,'function']])
 
-        self.old_plan_handle = plan_handle
+        if self.plan_executing: 
+            self.logger.info("Plan is being executed, canceling and starting new plan")
+            goal_uuid = UUID()
+            goal_handle = rclpy.action.client.ClientGoalHandle(self.plan_handler_action_cli, goal_uuid, self.plan_handle)
+            # self.plan_handle = self.plan_handler_action_cli._cancel_goal(goal_handle)
+            goal_handle.cancel_goal()
+            self.plan_action_callback(True)
+        else:
+            self.logger.info("Plan is not being executed, starting first plan")
+            self.plan_handle = self.plan_action_callback(False)
+            self.logger.info("--------------------------------")
+            self.plan_executing = True
 
+
+        self.functions_set = True
         success = True           
         return success
 
@@ -698,7 +704,9 @@ class RosReasoner(ROS2Node, Reasoner):
         # self.set_initial_instances_pddl()
 
         if (objectives_in_error != []) or (available_fds_filtered != self.old_available_fds_filtered):
-            plan_success = self.plan_pddl(available_fds_filtered)
+            self.logger.info("objectives in error bool "+str(objectives_in_error!=[]))
+            self.logger.info("new available_fds_filtered "+str(available_fds_filtered!=self.old_available_fds_filtered))
+            self.plan_pddl(available_fds_filtered)
 
         # if available_configurations is not None:
             # self.logger.info('available_configurations is not None')

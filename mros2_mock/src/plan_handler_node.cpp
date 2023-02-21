@@ -28,6 +28,9 @@
 #include "rclcpp_action/server.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "mros2_msgs/action/execute_plan.hpp"
+#include<ctime>
+
+using namespace std::chrono_literals;
 
 class PlanHandlerServer : public rclcpp::Node
 {
@@ -63,7 +66,7 @@ public:
   void init_knowledge()
   {
     problem_expert_->addInstance(plansys2::Instance{"bluerov", "uuv"});
-    problem_expert_->addInstance(plansys2::Instance{"pl1", "pipelin"});
+    problem_expert_->addInstance(plansys2::Instance{"pl1", "pipeline"});
 
     problem_expert_->addInstance(plansys2::Instance{"f_action", "function"});
     problem_expert_->addInstance(plansys2::Instance{"fd_recharge", "functiondesign"});
@@ -85,7 +88,6 @@ public:
 
     problem_expert_->addInstance(plansys2::Instance{"f_follow_pipeline_waypoints", "function"});
     problem_expert_->addInstance(plansys2::Instance{"fd_generate_follow_wp", "functiondesign"});
-    problem_expert_->setGoal(plansys2::Goal("(and(pipeline_inspected pl1))"));
   }
 
 private:
@@ -124,18 +126,34 @@ private:
   void execute(const std::shared_ptr<GoalHandleExecutePlan> goal_handle)
   {
     RCLCPP_INFO(this->get_logger(), "Executing goal");
+    problem_expert_->setGoal(plansys2::Goal{"(and(pipeline_inspected pl1))"});
 
     auto domain = domain_expert_->getDomain();
     auto problem = problem_expert_->getProblem();
     auto plan = planner_client_->getPlan(domain, problem);
+    RCLCPP_INFO(this->get_logger(), "After plan generation");
 
     auto result = std::make_shared<ExecutePlan::Result>();
 
-    RCLCPP_INFO(this->get_logger(), plan.value().items[0].action.c_str());
+
+    // plansys2_msgs::srv::GetPlan plan = 
+    RCLCPP_INFO(this->get_logger(), typeid(plan).name());
+
+    for (auto const& item : plan.value().items) {
+      RCLCPP_INFO(this->get_logger(), item.action.c_str());
+      RCLCPP_INFO(this->get_logger(), "duration is %f", item.duration);
+      RCLCPP_INFO(this->get_logger(), "time is %f", item.time);
+    }
     if (!plan.has_value()) {
       std::cout << "Could not find plan to reach goal " <<
         parser::pddl::toString(problem_expert_->getGoal()) << std::endl;
       return;
+    }
+    
+    if (goal_handle->get_goal()->change_plan) {
+      RCLCPP_INFO(this->get_logger(), "Canceling plan");
+      executor_client_->cancel_plan_execution();
+      rclcpp::sleep_for(1s);
     }
 
     // Execute the plan
