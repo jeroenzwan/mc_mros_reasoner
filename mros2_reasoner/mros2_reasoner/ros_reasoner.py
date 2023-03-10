@@ -203,19 +203,19 @@ class RosReasoner(ROS2Node, Reasoner):
         self.call_predicate_service('recharge_a', [['recharge','action']])
 
         self.call_predicate_service('a_req_f',
-                    [['search','action'],['f_maintain_motion','function']])
-        self.call_predicate_service('a_req_f',
-                    [['search','action'],['f_search_pipeline_wp','function']])
+                    [['search','action'],
+                     ['f_maintain_motion','function'],
+                     ['f_search_pipeline_wp','function']])
                     
         self.call_predicate_service('a_req_f',
-                    [['follow','action'],['f_maintain_motion','function']])
-        self.call_predicate_service('a_req_f',
-                    [['follow','action'],['f_follow_pipeline_wp','function']])
+                    [['follow','action'],
+                     ['f_maintain_motion','function'],
+                     ['f_follow_pipeline_wp','function']])
                     
         self.call_predicate_service('a_req_f',
-                    [['recharge','action'],['f_maintain_motion','function']])
-        self.call_predicate_service('a_req_f',
-                    [['recharge','action'],['f_recharge_wp','function']])
+                    [['recharge','action'],
+                     ['f_maintain_motion','function'],
+                     ['f_recharge_wp','function']])
 
         self.call_predicate_service('charged', [['bluerov','uuv']])
 
