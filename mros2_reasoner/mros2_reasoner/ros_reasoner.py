@@ -175,89 +175,100 @@ class RosReasoner(ROS2Node, Reasoner):
         self.call_instance_service('bluerov', 'uuv')
         self.call_instance_service('pl1', 'pipeline')
 
-        self.call_instance_service('f_action', 'function')
-        self.call_instance_service('fd_recharge', 'functiondesign')
-        self.call_instance_service('fd_search_pipeline', 'functiondesign')
-        self.call_instance_service('fd_follow_pipeline', 'functiondesign')
+        self.call_instance_service('recharge', 'action')
+        self.call_instance_service('search', 'action')
+        self.call_instance_service('follow', 'action')
 
         self.call_instance_service('f_maintain_motion', 'function')
-        # self.call_instance_service('fd_all_thrusters', 'functiondesign')
-        # self.call_instance_service('fd_recover', 'functiondesign')
         self.call_instance_service('fd_set_speed_high', 'functiondesign')
         self.call_instance_service('fd_set_speed_medium', 'functiondesign')
         self.call_instance_service('fd_set_speed_low', 'functiondesign')
 
-        self.call_instance_service('f_go_to_recharge_waypoints', 'function')
+        self.call_instance_service('f_recharge_wp', 'function')
         self.call_instance_service('fd_generate_recharge_wp', 'functiondesign')
 
-        self.call_instance_service('f_search_pipeline_waypoints', 'function')
+        self.call_instance_service('f_search_pipeline_wp', 'function')
         self.call_instance_service('fd_spiral_low', 'functiondesign')
         self.call_instance_service('fd_spiral_medium', 'functiondesign')
         self.call_instance_service('fd_spiral_high', 'functiondesign')
         
-        self.call_instance_service('f_follow_pipeline_waypoints', 'function')
+        self.call_instance_service('f_follow_pipeline_wp', 'function')
         self.call_instance_service('fd_generate_follow_wp', 'functiondesign')
 
         self.call_predicate_service('pipeline_not_found', [['pl1','pipeline']])
         self.call_predicate_service('pipeline_not_inspected', [['pl1','pipeline']])
 
-        self.call_predicate_service('search_requires_f', [['fd_search_pipeline','functiondesign'],
-                    ['f_maintain_motion','function'],['f_search_pipeline_waypoints','function']])
-        self.call_predicate_service('follow_requires_f', [['fd_follow_pipeline','functiondesign'],
-                    ['f_maintain_motion','function'],['f_follow_pipeline_waypoints','function']])
-        self.call_predicate_service('recharge_requires_f', [['fd_recharge','functiondesign'],
-                    ['f_maintain_motion','function'],['f_go_to_recharge_waypoints','function']])
+        self.call_predicate_service('search_a', [['search','action']])
+        self.call_predicate_service('follow_a', [['follow','action']])
+        self.call_predicate_service('recharge_a', [['recharge','action']])
 
-        self.call_function_service('speed',
+        self.call_predicate_service('a_req_f',
+                    [['search','action'],['f_maintain_motion','function']])
+        self.call_predicate_service('a_req_f',
+                    [['search','action'],['f_search_pipeline_wp','function']])
+                    
+        self.call_predicate_service('a_req_f',
+                    [['follow','action'],['f_maintain_motion','function']])
+        self.call_predicate_service('a_req_f',
+                    [['follow','action'],['f_follow_pipeline_wp','function']])
+                    
+        self.call_predicate_service('a_req_f',
+                    [['recharge','action'],['f_maintain_motion','function']])
+        self.call_predicate_service('a_req_f',
+                    [['recharge','action'],['f_recharge_wp','function']])
+
+        self.call_predicate_service('charged', [['bluerov','uuv']])
+
+        self.call_function_service('time',
                 [['fd_set_speed_high','functiondesign']], 20.)
 
-        self.call_function_service('speed',
+        self.call_function_service('time',
                 [['fd_set_speed_medium','functiondesign']], 30.)
 
-        self.call_function_service('speed',
+        self.call_function_service('time',
                 [['fd_set_speed_low','functiondesign']], 40.)
 
-        self.call_function_service('speed',
+        self.call_function_service('time',
                 [['fd_generate_recharge_wp','functiondesign']], 5.)
 
-        self.call_function_service('speed',
+        self.call_function_service('time',
                 [['fd_spiral_low','functiondesign']], 20.)
 
-        self.call_function_service('speed',
+        self.call_function_service('time',
                 [['fd_spiral_medium','functiondesign']], 10.)
 
-        self.call_function_service('speed',
+        self.call_function_service('time',
                 [['fd_spiral_high','functiondesign']], 5.)
 
-        self.call_function_service('speed',
+        self.call_function_service('time',
                 [['fd_generate_follow_wp','functiondesign']], 5.)
 
-        self.call_function_service('battery_usage',
-                [['fd_set_speed_high','functiondesign']], 30.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_set_speed_high','functiondesign']], 30.)
 
-        self.call_function_service('battery_usage',
-                [['fd_set_speed_medium','functiondesign']], 20.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_set_speed_medium','functiondesign']], 20.)
 
-        self.call_function_service('battery_usage',
-                [['fd_set_speed_low','functiondesign']], 10.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_set_speed_low','functiondesign']], 10.)
                 
-        self.call_function_service('battery_usage',
-                [['fd_recover','functiondesign']], 5.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_recover','functiondesign']], 5.)
 
-        self.call_function_service('battery_usage',
-                [['fd_spiral_low','functiondesign']], 10.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_spiral_low','functiondesign']], 10.)
 
-        self.call_function_service('battery_usage',
-                [['fd_spiral_medium','functiondesign']], 15.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_spiral_medium','functiondesign']], 15.)
 
-        self.call_function_service('battery_usage',
-                [['fd_spiral_high','functiondesign']], 20.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_spiral_high','functiondesign']], 20.)
 
-        self.call_function_service('battery_usage',
-                [['fd_generate_follow_wp','functiondesign']], 5.)
+        # self.call_function_service('battery_usage',
+        #         [['fd_generate_follow_wp','functiondesign']], 5.)
 
-        self.call_function_service('battery_level',
-                [['bluerov','uuv']], 100.)
+        # self.call_function_service('battery_level',
+        #         [['bluerov','uuv']], 100.)
 
         self.call_goal_service('pipeline_inspected', ['pl1', 'pipeline'], 5)
 
@@ -664,6 +675,8 @@ class RosReasoner(ROS2Node, Reasoner):
             
             for available_fd in available_fds_filtered:
                 self.call_predicate_service('fd_available',
+                        [[available_fd[0].name,'functiondesign']])
+                self.call_predicate_service('fd_solve_f',
                         [[available_fd[0].name,'functiondesign'],
                             [available_fd[0].solvesF.name,'function']])
 
