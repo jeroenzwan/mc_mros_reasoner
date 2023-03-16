@@ -7,7 +7,8 @@ from rclpy.node import Node as ROS2Node
 from rclpy.parameter import Parameter
 
 from system_modes_msgs.srv import ChangeMode
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, Bool
+from std_srvs.srv import SetBool
 from diagnostic_msgs.msg import DiagnosticArray
 from diagnostic_msgs.msg import KeyValue
 from unique_identifier_msgs.msg import UUID
@@ -15,7 +16,7 @@ from unique_identifier_msgs.msg import UUID
 from mros2_reasoner.reasoner import Reasoner
 
 from mros2_msgs.action import ControlQos
-from mros2_msgs.msg import QoS
+from mros2_msgs.msg import QoS, QoSList
 from mros2_msgs.srv import MetacontrolFD
 
 from plansys2_msgs.msg import Param, Node, Tree
@@ -40,7 +41,7 @@ class RosReasoner(ROS2Node, Reasoner):
         )
 
         self.declare_parameter('desired_configuration', Parameter.Type.STRING)
-        self.declare_parameter('reasoning_period', 2)
+        self.declare_parameter('reasoning_period', 4)
         self.declare_parameter('use_reconfigure_srv', True)
 
         # Whether or not to use system modes reconfiguration
@@ -118,6 +119,22 @@ class RosReasoner(ROS2Node, Reasoner):
             1,
             callback_group=self.cb_group)
 
+        self.pipeline_detect_sub = self.create_subscription(
+            Bool,
+            '/pipeline/detected',
+            self.detect_pipeline_callback,
+            1,
+            callback_group=self.cb_group)
+        self.pipeline_detected = False
+
+        # self.pipeline_inspected_sub = self.create_subscription(
+        #     Bool,
+        #     '/pipeline/inspected',
+        #     self.inspect_pipeline_callback,
+        #     1,
+        #     callback_group=self.cb_group)
+        # self.pipeline_inspected = False
+
         # Create action server
         self.objective_action_server = ActionServer(
             self,
@@ -126,6 +143,26 @@ class RosReasoner(ROS2Node, Reasoner):
             self.objective_action_callback,
             callback_group=self.cb_group,
             cancel_callback=self.objective_cancel_goal_callback)
+
+        self.objective_sub = self.create_subscription(
+            QoSList,
+            '/mros/sub_objective',
+            self.objective_callback,
+            1,
+            callback_group=self.cb_group)
+
+        self.objective_remove = self.create_subscription(
+            Bool,
+            '/mros/remove_objectives',
+            self.remove_objective_callback,
+            1,
+            callback_group=self.cb_group)
+
+        self.battery_srv = self.create_service(SetBool, 'battery_monitor', self.battery_cb)
+
+        self.recharge_needed = False
+        self.first_recharge_needed = True
+        self.first_charged = True
 
         # Get desired_configuration_name from parameters
         self.set_initial_fd(self.get_parameter('desired_configuration').value)
@@ -148,6 +185,20 @@ class RosReasoner(ROS2Node, Reasoner):
         # Reasoner initialization completed
         self.is_initialized = True
         self.logger.info('[RosReasoner] -- Reasoner Initialization Ok')
+
+    def detect_pipeline_callback(self, msg):
+        self.pipeline_detected = msg.data
+
+    # def inspect_pipeline_callback(self, msg):
+    #     self.pipeline_inspected = msg.data
+
+    def battery_cb(self, request, response):
+        response.success = True
+        self.logger.info('Battery too low received')
+        self.recharge_needed = request.data
+        self.logger.info('Recharge needed '+str(self.recharge_needed))
+
+        return response
 
     def set_initial_fd(self, initial_fd):
         if initial_fd != '':
@@ -172,52 +223,53 @@ class RosReasoner(ROS2Node, Reasoner):
         # self.call_instance_service('fd_fake2','functiondesign')
         # self.call_instance_service('fd_fake3','functiondesign')
 
-        self.call_instance_service('bluerov', 'uuv')
-        self.call_instance_service('pl1', 'pipeline')
+        # self.call_instance_service('bluerov', 'uuv')
+        # self.call_instance_service('pl1', 'pipeline')
 
-        self.call_instance_service('recharge', 'action')
-        self.call_instance_service('search', 'action')
-        self.call_instance_service('follow', 'action')
+        # self.call_instance_service('recharge', 'action')
+        # self.call_instance_service('search', 'action')
+        # self.call_instance_service('follow', 'action')
 
-        self.call_instance_service('f_maintain_motion', 'function')
-        self.call_instance_service('fd_set_speed_high', 'functiondesign')
-        self.call_instance_service('fd_set_speed_medium', 'functiondesign')
-        self.call_instance_service('fd_set_speed_low', 'functiondesign')
+        # self.call_instance_service('f_maintain_motion', 'function')
+        # self.call_instance_service('fd_set_speed_high', 'functiondesign')
+        # self.call_instance_service('fd_set_speed_medium', 'functiondesign')
+        # self.call_instance_service('fd_set_speed_low', 'functiondesign')
 
-        self.call_instance_service('f_recharge_wp', 'function')
-        self.call_instance_service('fd_generate_recharge_wp', 'functiondesign')
+        # self.call_instance_service('f_recharge_wp', 'function')
+        # self.call_instance_service('fd_generate_recharge_wp', 'functiondesign')
 
-        self.call_instance_service('f_search_pipeline_wp', 'function')
-        self.call_instance_service('fd_spiral_low', 'functiondesign')
-        self.call_instance_service('fd_spiral_medium', 'functiondesign')
-        self.call_instance_service('fd_spiral_high', 'functiondesign')
+        # self.call_instance_service('f_search_pipeline_wp', 'function')
+        # self.call_instance_service('fd_spiral_low', 'functiondesign')
+        # self.call_instance_service('fd_spiral_medium', 'functiondesign')
+        # self.call_instance_service('fd_spiral_high', 'functiondesign')
         
-        self.call_instance_service('f_follow_pipeline_wp', 'function')
-        self.call_instance_service('fd_generate_follow_wp', 'functiondesign')
+        # self.call_instance_service('f_follow_pipeline_wp', 'function')
+        # self.call_instance_service('fd_generate_follow_wp', 'functiondesign')
 
-        self.call_predicate_service('pipeline_not_found', [['pl1','pipeline']])
-        self.call_predicate_service('pipeline_not_inspected', [['pl1','pipeline']])
+        # # self.call_predicate_service('pipeline_found', [['pl1','pipeline']])
+        # self.call_predicate_service('pipeline_not_found', [['pl1','pipeline']])
+        # self.call_predicate_service('pipeline_not_inspected', [['pl1','pipeline']])
 
-        self.call_predicate_service('search_a', [['search','action']])
-        self.call_predicate_service('follow_a', [['follow','action']])
-        self.call_predicate_service('recharge_a', [['recharge','action']])
+        # self.call_predicate_service('search_a', [['search','action']])
+        # self.call_predicate_service('follow_a', [['follow','action']])
+        # self.call_predicate_service('recharge_a', [['recharge','action']])
 
-        self.call_predicate_service('a_req_f',
-                    [['search','action'],
-                     ['f_maintain_motion','function'],
-                     ['f_search_pipeline_wp','function']])
+        # self.call_predicate_service('a_req_f',
+        #             [['search','action'],
+        #              ['f_maintain_motion','function'],
+        #              ['f_search_pipeline_wp','function']])
                     
-        self.call_predicate_service('a_req_f',
-                    [['follow','action'],
-                     ['f_maintain_motion','function'],
-                     ['f_follow_pipeline_wp','function']])
+        # self.call_predicate_service('a_req_f',
+        #             [['follow','action'],
+        #              ['f_maintain_motion','function'],
+        #              ['f_follow_pipeline_wp','function']])
                     
-        self.call_predicate_service('a_req_f',
-                    [['recharge','action'],
-                     ['f_maintain_motion','function'],
-                     ['f_recharge_wp','function']])
+        # self.call_predicate_service('a_req_f',
+        #             [['recharge','action'],
+        #              ['f_maintain_motion','function'],
+        #              ['f_recharge_wp','function']])
 
-        self.call_predicate_service('charged', [['bluerov','uuv']])
+        # # self.call_predicate_service('charged', [['bluerov','uuv']])
 
         self.call_function_service('time',
                 [['fd_set_speed_high','functiondesign']], 20.)
@@ -270,34 +322,46 @@ class RosReasoner(ROS2Node, Reasoner):
         # self.call_function_service('battery_level',
         #         [['bluerov','uuv']], 100.)
 
-        self.call_goal_service('pipeline_inspected', ['pl1', 'pipeline'], 5)
+        # self.call_goal_service('pipeline_inspected', ['pl1', 'pipeline'], 5)
 
     def objective_cancel_goal_callback(self, cancel_request):
         self.logger.info('Cancel action callback!')
         # Stop reasoning
+        self.logger.info('Getting objectives')
+        objs = self.tomasys.Objective.instances()
+        self.logger.info('Objective request msg {}'.format(
+            cancel_request.request.qos_expected.objective_id))
 
-        if self.use_reconfiguration_srv:
-            function_name = self.get_function_name_from_objective_id(
-                cancel_request.request.qos_expected.objective_id)
-            reconfiguration_result = self.request_configuration(
-                'fd_unground',
-                function_name)
+        for obj in objs:
+            self.logger.info('Objective {}'.format(
+                obj.name))
 
-            if reconfiguration_result is None \
-               or reconfiguration_result.success is False:
-                self.logger.info('Objective {} cancel req failed'.format(
-                    cancel_request.request.qos_expected.objective_id))
+        for obj in objs:
+            self.logger.info('Objective {}'.format(
+                obj.name))
+            if self.use_reconfiguration_srv:
+                function_name = self.get_function_name_from_objective_id(
+                    obj.name)
+                reconfiguration_result = self.request_configuration(
+                    'fd_unground',
+                    function_name)
+
+                if reconfiguration_result is None \
+                or reconfiguration_result.success is False:
+                    self.logger.info('Objective {} cancel req failed'.format(
+                        cancel_request.request.qos_expected.objective_id))
+                    return CancelResponse.REJECT
+
+            if self.remove_objective(
+                    obj.name):
+                self.logger.info('Objective {} cancelled'.format(
+                    obj.name))
+                # self.feedback_rate.sleep()
+            else:
+                self.logger.info('Objective {} not found'.format(
+                    obj.name))
                 return CancelResponse.REJECT
-
-        if self.remove_objective(
-                cancel_request.request.qos_expected.objective_id):
-            self.logger.info('Objective {} cancelled'.format(
-                cancel_request.request.qos_expected.objective_id))
-            return CancelResponse.ACCEPT
-        else:
-            self.logger.info('Objective {} not found'.format(
-                cancel_request.request.qos_expected.objective_id))
-            return CancelResponse.REJECT
+        return CancelResponse.ACCEPT
 
     def objective_action_callback(self, objective_handle):
 
@@ -348,6 +412,109 @@ class RosReasoner(ROS2Node, Reasoner):
             objective_handle.fail()
 
         return ControlQos.Result()
+
+    def objective_callback(self, msg):
+        self.logger.info('Objective Sub Callback!')
+        if not msg.cancel:
+            self.logger.info('Starting objectives')
+            for obj in msg.list:
+                self.logger.info(obj.objective_id)
+                obj_created = self.create_objective_sub(obj)
+                if obj_created:
+                    self.logger.info("before objective")
+                    objective = self.get_objective_from_objective_id(
+                        obj.objective_id)
+
+                    if objective is not None:
+                        self.logger.info("requesting config for "+objective.typeF.name)
+                        self.request_configuration(
+                                obj.selected_mode, objective.typeF.name)
+                        self.set_new_grounding(
+                                obj.selected_mode, objective)
+
+                        fg_instance = self.onto.search_one(solvesO=objective)
+                        if fg_instance is not None:
+                            for qa in fg_instance.hasQAvalue:
+                                QAValue = KeyValue()
+                                QAValue.key = str(qa.isQAtype.name)
+                                QAValue.value = str(qa.hasValue)
+        else:
+            self.logger.info('Canceling objectives')
+            for objective in msg.list:
+                obj = self.get_objective_from_objective_id(
+                    objective.objective_id)
+                self.logger.info('Objective {}'.format(
+                    obj.name))
+                if self.use_reconfiguration_srv:
+                    function_name = self.get_function_name_from_objective_id(
+                        obj.name)
+                    reconfiguration_result = self.request_configuration(
+                        'fd_unground',
+                        function_name)
+
+                    if reconfiguration_result is None \
+                    or reconfiguration_result.success is False:
+                        self.logger.info('Objective {} cancel req failed'.format(
+                            obj.name))
+
+                if self.remove_objective(
+                        obj.name):
+                    self.logger.info('Objective {} cancelled'.format(
+                        obj.name))
+                else:
+                    self.logger.info('Objective {} not found'.format(
+                        obj.name))
+
+    def remove_objective_callback(self, msg):
+        self.logger.info('Canceling objectives')
+        if msg.data:
+            objs = self.tomasys.Objective.instances()
+            for obj in objs:
+                self.logger.info('Objective {}'.format(
+                    obj.name))
+                if self.use_reconfiguration_srv:
+                    function_name = self.get_function_name_from_objective_id(
+                        obj.name)
+                    reconfiguration_result = self.request_configuration(
+                        'fd_unground',
+                        function_name)
+
+                    if reconfiguration_result is None \
+                    or reconfiguration_result.success is False:
+                        self.logger.info('Objective {} cancel req failed'.format(
+                            obj.name))
+
+                if self.remove_objective(
+                        obj.name):
+                    self.logger.info('Objective {} cancelled'.format(
+                        obj.name))
+                else:
+                    self.logger.info('Objective {} not found'.format(
+                        obj.name))
+
+    def create_objective_sub(self, goal_request):
+        new_objective = self.get_new_tomasys_objective(
+            goal_request.objective_id,
+            "*" + goal_request.objective_type)
+        self.logger.info('Creating Objective {0}'.format(new_objective))
+        for nfr_key in goal_request.qos:
+            nfr_id = \
+                goal_request.objective_id + '_nfr_' + nfr_key.key
+            new_nfr = self.get_new_tomasys_nfr(
+                 nfr_id, nfr_key.key, float(nfr_key.value))
+            self.logger.info('Adding NFRs {}'.format(new_nfr))
+            new_objective.hasNFR.append(new_nfr)
+
+        # TODO: this is not working
+        if not goal_request.selected_mode:
+            self.set_initial_fd(None)
+        else:
+            self.set_initial_fd(goal_request.selected_mode)
+
+        # TODO: shouldn't this be a swrl rule instead of hardcoded?
+        new_objective.o_status = 'UNGROUNDED'
+
+        return True
 
     def create_objective(self, goal_request):
         new_objective = self.get_new_tomasys_objective(
@@ -666,19 +833,90 @@ class RosReasoner(ROS2Node, Reasoner):
 
         self.set_initial_instances_pddl()
 
+        if self.pipeline_detected:
+            msg = Node()
+            msg.node_type = 5
+            msg.name = 'pipeline_not_found'
+
+            param_list = []
+            param = Param()
+            param.name = 'pl1'
+            param.type = 'pipeline'
+            param_list.append(param)
+
+            msg.parameters = param_list
+            self.call_remove_predicate_service(msg)
+            self.call_predicate_service('pipeline_found',
+                                [['pl1','pipeline']])
         
         if available_fds_filtered is not []:
             if self.functions_set:
                 self.remove_predicates_pddl()
             self.logger.info('available_configurations are {}'.format(
                                 available_fds_filtered))
+
+            if self.recharge_needed and self.first_recharge_needed:
+                self.get_logger().info('--------------------------------------')
+                self.get_logger().info('Recharge needed, removing preds and adding')
+                msg = Node()
+                msg.node_type = 5
+                msg.name = 'charged'
+
+                param_list = []
+                param = Param()
+                param.name = 'bluerov'
+                param.type = 'uuv'
+                param_list.append(param)
+
+                msg.parameters = param_list
+
+                self.call_remove_predicate_service(msg)
+                self.call_predicate_service('recharge_required',
+                                [['bluerov','uuv']])
+                self.first_recharge_needed = False
+            elif self.first_recharge_needed:
+                self.get_logger().info('--------------------------------------')
+                self.get_logger().info('Charged, adding pred')
+                self.call_predicate_service('charged',
+                                [['bluerov','uuv']])
+            elif not self.recharge_needed and self.first_charged:
+                self.get_logger().info('--------------------------------------')
+                self.get_logger().info('Charged, removing preds and adding')
+                msg = Node()
+                msg.node_type = 5
+                msg.name = 'recharge_required'
+
+                param_list = []
+                param = Param()
+                param.name = 'bluerov'
+                param.type = 'uuv'
+                param_list.append(param)
+
+                msg.parameters = param_list
+
+                self.call_remove_predicate_service(msg)
+                self.call_predicate_service('charged',
+                                [['bluerov','uuv']])
+                self.first_charged = False
+
             
             for available_fd in available_fds_filtered:
-                self.call_predicate_service('fd_available',
-                        [[available_fd[0].name,'functiondesign']])
-                self.call_predicate_service('fd_solve_f',
-                        [[available_fd[0].name,'functiondesign'],
-                            [available_fd[0].solvesF.name,'function']])
+                if self.recharge_needed:
+                    if (available_fd[0].name == "fd_set_speed_medium") or \
+                            (available_fd[0].name == 'fd_set_speed_high'):
+                        pass
+                    else:
+                        self.call_predicate_service('fd_available',
+                                [[available_fd[0].name,'functiondesign']])
+                        self.call_predicate_service('fd_solve_f',
+                                [[available_fd[0].name,'functiondesign'],
+                                    [available_fd[0].solvesF.name,'function']])
+                else:
+                    self.call_predicate_service('fd_available',
+                            [[available_fd[0].name,'functiondesign']])
+                    self.call_predicate_service('fd_solve_f',
+                            [[available_fd[0].name,'functiondesign'],
+                                [available_fd[0].solvesF.name,'function']])
 
         if self.plan_executing: 
             self.logger.info("Plan is being executed, canceling and starting new plan")

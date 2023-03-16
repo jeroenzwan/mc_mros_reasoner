@@ -28,6 +28,7 @@
 #include "rclcpp_action/server.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "mros2_msgs/action/execute_plan.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include<ctime>
 
 using namespace std::chrono_literals;
@@ -52,6 +53,8 @@ public:
       std::bind(&PlanHandlerServer::handle_accepted, this, _1),
       rcl_action_server_get_default_options(),
       server_cb_group_);
+    obj_pub = this->create_publisher<std_msgs::msg::Bool>("mros/remove_objectives", 10);
+    msg = std_msgs::msg::Bool();
   }
 
   void init()
@@ -68,26 +71,39 @@ public:
     problem_expert_->addInstance(plansys2::Instance{"bluerov", "uuv"});
     problem_expert_->addInstance(plansys2::Instance{"pl1", "pipeline"});
 
-    problem_expert_->addInstance(plansys2::Instance{"f_action", "function"});
-    problem_expert_->addInstance(plansys2::Instance{"fd_recharge", "functiondesign"});
-    problem_expert_->addInstance(plansys2::Instance{"fd_search_pipeline", "functiondesign"});
-    problem_expert_->addInstance(plansys2::Instance{"fd_follow_pipeline", "functiondesign"});
+    problem_expert_->addInstance(plansys2::Instance{"recharge", "action"});
+    problem_expert_->addInstance(plansys2::Instance{"search", "action"});
+    problem_expert_->addInstance(plansys2::Instance{"follow", "action"});
 
     problem_expert_->addInstance(plansys2::Instance{"f_maintain_motion", "function"});
     problem_expert_->addInstance(plansys2::Instance{"fd_set_speed_high", "functiondesign"});
     problem_expert_->addInstance(plansys2::Instance{"fd_set_speed_medium", "functiondesign"});
     problem_expert_->addInstance(plansys2::Instance{"fd_set_speed_low", "functiondesign"});
 
-    problem_expert_->addInstance(plansys2::Instance{"f_go_to_recharge_waypoints", "function"});
+    problem_expert_->addInstance(plansys2::Instance{"f_recharge_wp", "function"});
     problem_expert_->addInstance(plansys2::Instance{"fd_generate_recharge_wp", "functiondesign"});
 
-    problem_expert_->addInstance(plansys2::Instance{"f_search_pipeline_waypoints", "function"});
+    problem_expert_->addInstance(plansys2::Instance{"f_search_pipeline_wp", "function"});
     problem_expert_->addInstance(plansys2::Instance{"fd_spiral_high", "functiondesign"});
     problem_expert_->addInstance(plansys2::Instance{"fd_spiral_medium", "functiondesign"});
     problem_expert_->addInstance(plansys2::Instance{"fd_spiral_low", "functiondesign"});
 
-    problem_expert_->addInstance(plansys2::Instance{"f_follow_pipeline_waypoints", "function"});
+    problem_expert_->addInstance(plansys2::Instance{"f_follow_pipeline_wp", "function"});
     problem_expert_->addInstance(plansys2::Instance{"fd_generate_follow_wp", "functiondesign"});
+
+    problem_expert_->addPredicate(plansys2::Predicate("(pipeline_not_found pl1)"));
+    problem_expert_->addPredicate(plansys2::Predicate("(pipeline_not_inspected pl1)"));
+    problem_expert_->addPredicate(plansys2::Predicate("(charged bluerov)"));
+
+    problem_expert_->addPredicate(plansys2::Predicate("(search_a search)"));
+    problem_expert_->addPredicate(plansys2::Predicate("(follow_a follow)"));
+    problem_expert_->addPredicate(plansys2::Predicate("(recharge_a recharge)"));
+
+    problem_expert_->addPredicate(plansys2::Predicate("(a_req_f search f_maintain_motion f_search_pipeline_wp)"));
+    problem_expert_->addPredicate(plansys2::Predicate("(a_req_f follow f_maintain_motion f_follow_pipeline_wp)"));
+    problem_expert_->addPredicate(plansys2::Predicate("(a_req_f recharge f_maintain_motion f_recharge_wp)"));
+
+    problem_expert_->setGoal(plansys2::Goal("(and (pipeline_inspected pl1))"));
   }
 
 private:
@@ -97,6 +113,8 @@ private:
   std::shared_ptr<plansys2::ExecutorClient> executor_client_;
   rclcpp_action::Server<ExecutePlan>::SharedPtr action_server;
   rclcpp::CallbackGroup::SharedPtr server_cb_group_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr obj_pub;
+  std_msgs::msg::Bool msg;
   
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID & uuid,
@@ -152,6 +170,8 @@ private:
     
     if (goal_handle->get_goal()->change_plan) {
       RCLCPP_INFO(this->get_logger(), "Canceling plan");
+      msg.data = true;
+      obj_pub->publish(msg);
       executor_client_->cancel_plan_execution();
       rclcpp::sleep_for(1s);
     }

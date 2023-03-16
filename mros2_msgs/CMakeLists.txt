@@ -15,6 +15,7 @@ find_package(plansys2_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/QoS.msg"
+  "msg/QoSList.msg"
   "srv/MetacontrolFD.srv"
   "action/ExecutePlan.action"
   "action/NavigateToPoseQos.action"

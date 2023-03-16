@@ -50,10 +50,16 @@ class Reasoner:
 
     def remove_objective(self, objective_id):
         # Checks if there are previously defined objectives.
+        self.logger.info('Objective {} in remove_objective'.format(
+                objective_id))
         old_objective = self.onto.search_one(iri="*{}".format(objective_id))
+        self.logger.info('Old Objective {} in remove_objective'.format(
+                old_objective.name))
         if old_objective:
             old_fg_instance = self.onto.search_one(solvesO=old_objective)
             with self.ontology_lock:
+                self.logger.info('Old FG {} before canceling'.format(
+                        old_fg_instance.name))
                 destroy_entity(old_fg_instance)
                 destroy_entity(old_objective)
             return True
